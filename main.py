@@ -1,9 +1,8 @@
 # Github Contributions 
 # John Roy Daradal 
 
-import json, requests
+import json, requests, webbrowser, os
 import matplotlib.pyplot as plt 
-import numpy as np
 from datetime import date
 from bs4 import BeautifulSoup
 
@@ -24,7 +23,7 @@ class Contrib:
     def __repr__(self) -> str:
         return str(self.count)
 
-def fetch_contributions(username: str) -> dict[str,Contrib]:
+def fetch_contributions(username: str) -> dict[str, Contrib]:
     # Start from January 1 of current year
     start = '%d-01-01' % date.today().year
     url = HTML_URL % (username, start)
@@ -59,28 +58,39 @@ def fetch_contributions(username: str) -> dict[str,Contrib]:
 
 def fetch_dev_contributions():
     count: dict[str, int] = {}
+    levels: dict[str, list[IntPair]] = {}
     for username in get_devs():
         contribs = fetch_contributions(username)
+        levels[username] = get_count_levels(contribs)
         count[username] = sum([x.count for x in contribs.values()])
-        print(username, count[username])
+        print(username, count[username], levels[username])
 
+    title = get_title()
     entries = sorted(count.items(), key=lambda x: x[1])
     names: list[str] = [x[0] for x in entries]
     counts: list[int] = [x[1] for x in entries]
-
+    
     _, ax = plt.subplots()
     bars = plt.barh(names, counts)
     ax.bar_label(bars, label_type='edge', padding=5)
-    plt.title('GitHub Contributions from %s to %s' % (date_to_string(START_DATE), date_to_string(END_DATE)))
+    plt.title(title)
     plt.xlabel('Contribs')
     plt.ylabel('Devs')
+    plt.savefig('out.png', bbox_inches='tight')
 
-    plt.show()
+    reps: dict[str, str] = {}
+    reps['Title'] = title
+    tbl: list[str] = []
+    for username in reversed(names):
+        tbl.append('<tr>')
+        tbl.append('<td>%s</td>' % username)
+        for num, level in levels[username]:
+            tbl.append('<th class="level%d">%d</th>' % (level, num))
+        tbl.append('</tr>')
+    reps['Table'] = ''.join(tbl)
+    create_grid_file(reps)
 
-def fetch_dev_grid():
-    for username in get_devs():
-        contribs = fetch_contributions(username)
-        print(username, get_count_levels(contribs))
+
 
 def date_to_string(d: Date) -> str:
     yy, mm, dd = d 
@@ -109,14 +119,36 @@ def get_count_levels(contribs: dict[str, Contrib]) -> list[IntPair]:
         pairs.append((count, level))
     return pairs
 
+def create_grid_file(reps: dict[str, str]):
+    f = open('template.html', 'r')
+    body = ''.join(line for line in f.readlines())
+    f.close()
+
+    for key, replacement in reps.items():
+        key = '%%%s%%' % key 
+        body = body.replace(key, replacement)
+
+    path = 'out.html'
+    f = open(path, 'w')
+    f.write(body)
+    f.close() 
+
+    # Open html file 
+    full_path = os.path.abspath(path)
+    url = 'file://' + full_path 
+    webbrowser.open_new_tab(url)
+
+
+def get_title() -> str:
+    return 'GitHub Contributions from %s to %s' % (date_to_string(START_DATE), date_to_string(END_DATE))
 
 
 if __name__ == '__main__':
-    # fetch_dev_contributions()
-    fetch_dev_grid()
+    fetch_dev_contributions()
 
 '''
 TODO:
+[ ] Open output HTML automatically
 [ ] Detect current week (Mon-Fri) automatically
 [ ] Detect current month automatically 
 [ ] Separate into days (Mon-Fri) + weekends 
