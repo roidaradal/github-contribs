@@ -1,7 +1,7 @@
 # Github Contributions 
 # John Roy Daradal 
 
-import json, requests, webbrowser, os
+import json, requests, webbrowser, os, sys
 import matplotlib.pyplot as plt 
 from datetime import date
 from bs4 import BeautifulSoup
@@ -12,29 +12,32 @@ IntPair = tuple[int,int]
 
 HTML_URL: str = 'https://github.com/users/%s/contributions?from=%s'
 API_URL : str = 'https://api.github.com/users/%s/events/public'
+OUT_DIR : str = 'out'
 
-class Contrib:
-    def __init__(self):
-        self.count: int = 0 
-        self.level: int = 0
-    
-    def __repr__(self) -> str:
-        return str(self.count)
+def fetch_weekly_contributions():
+    '''Fetch weekly contributions of usernames found in devs.json'''
+    start, end = get_week()
 
-def fetch_dev_contributions():
-    start, end = get_current_week()
-    count: dict[str, int] = {}
-    levels: dict[str, list[IntPair]] = {}
+    usernames = get_devs()
+    max_length = max(len(username) for username in usernames)
+    template = '%%-%ds\t%%3d\t%%s' % max_length
+
+    total: dict[str, int] = {}
+    count_levels: dict[str, list[IntPair]] = {}
     for username in get_devs():
         contribs = fetch_contributions(username, (start, end))
-        levels[username] = get_count_levels(contribs, (start, end))
-        count[username] = sum([x.count for x in contribs.values()])
-        print(username, count[username], levels[username])
+        count_levels[username] = get_count_levels(contribs, (start, end))
+        total[username] = sum(count for (count,_) in contribs.values())
+        details = ' '.join('%5s' % ('%d|%d' % (count,level)) for count,level in count_levels[username])
+        print(template % (username, total[username], details))
 
     title = 'GitHub Contributions from %s to %s' % (date_to_string(start), date_to_string(end))
-    entries = sorted(count.items(), key=lambda x: x[1])
+    filename = create_filename((start, end))
+    entries = sorted(total.items(), key=lambda x: x[1])
     names: list[str] = [x[0] for x in entries]
     counts: list[int] = [x[1] for x in entries]
+
+    if not os.path.exists(OUT_DIR): os.mkdir(OUT_DIR)
     
     _, ax = plt.subplots()
     bars = plt.barh(names, counts)
@@ -42,23 +45,26 @@ def fetch_dev_contributions():
     plt.title(title)
     plt.xlabel('Contribs')
     plt.ylabel('Devs')
-    plt.savefig('out.png', bbox_inches='tight')
+    path = '%s/%s.png' % (OUT_DIR, filename)
+    plt.savefig(path, bbox_inches='tight')
 
     reps: dict[str, str] = {}
     reps['Title'] = title
+    reps['Filename'] = filename
     tbl: list[str] = []
     for username in reversed(names):
         tbl.append('<tr>')
         tbl.append('<td>%s</td>' % username)
-        for num, level in levels[username]:
-            tbl.append('<th class="level%d">%d</th>' % (level, num))
+        for count, level in count_levels[username]:
+            tbl.append('<th class="level%d">%d</th>' % (level, count))
         tbl.append('</tr>')
     reps['Table'] = ''.join(tbl)
-    create_grid_file(reps)
+    create_output(filename, reps)
 
-def fetch_contributions(username: str, date_range: DateRange) -> dict[str, Contrib]:
+def fetch_contributions(username: str, date_range: DateRange) -> dict[str, IntPair]:
+    ''' Returns dict{username => (count, level)}'''
     # Start from January 1 of current year
-    year_start = '%d-01-01' % date.today().year
+    year_start = date_to_string((date_range[0][0], 1, 1))
     url = HTML_URL % (username, year_start)
 
     # Fetch HTML page and use BeautifulSoup
@@ -66,10 +72,8 @@ def fetch_contributions(username: str, date_range: DateRange) -> dict[str, Contr
     soup = BeautifulSoup(resp.text, 'lxml')
 
     # Get contributions
-    start, end = date_range
-    start_date = date_to_string(start)
-    end_date = date_to_string(end)
-    contribs: dict[str, Contrib] = {}
+    start_date, end_date = [date_to_string(d) for d in date_range]
+    contribs: dict[str, IntPair] = {}
     cells = soup.select('td.ContributionCalendar-day')
     for cell in cells:
         cell_date = str(cell['data-date'])
@@ -82,35 +86,55 @@ def fetch_contributions(username: str, date_range: DateRange) -> dict[str, Contr
         text = 'No'
         if tooltip: text = tooltip.get_text()
 
-        count = text.strip().split()[0]
-        contrib = Contrib()
-        contrib.count = 0 if count == 'No' else int(count)
-        contrib.level = int(str(cell['data-level']))
-        contribs[cell_date] = contrib
+        count_text = text.strip().split()[0]
+        count = 0 if count_text == 'No' else int(count_text)
+        level = int(str(cell['data-level']))
+        contribs[cell_date] = (count, level)
     return contribs
 
 ################### UTILITY FUNCTIONS #########################
 
-def get_current_week() -> DateRange:
+def get_week() -> DateRange:
+    '''Get week from week=yyyy-mm-dd argument. Defaults to current week.'''
+    for arg in sys.argv[1:]:
+        if arg.startswith('week='):
+            p = [int(x, 10) for x in arg.split('=')[1].split('-')]
+            return get_week_of(date(p[0], p[1], p[2]))
+        
+    # Default: Current week
+    return get_week_of(date.today())
+
+def get_week_of(d: date) -> DateRange:
     # For now, assumes same month 
     # TODO: fix for week that spans two months
-    today = date.today()
-    year, month, day = today.year, today.month, today.day 
-    start_day = day - today.weekday() # start at Monday
-    end_day = start_day + 4
+    year, month, day = d.year, d.month, d.day 
+    start_day = day - d.weekday() # start at Monday 
+    end_day = start_day + 4 # end at Friday
     return (year, month, start_day), (year, month, end_day)
 
-def date_to_string(d: Date) -> str:
+def date_from_string(d: str) -> Date:
+    '''Converts yyyy-mm-dd string to (yy,mm,dd) date'''
+    parts = [int(x) for x in d.split('-')]
+    return (parts[0], parts[1], parts[2])
+
+def date_to_string(d: Date, glue: str = '-') -> str:
+    '''Converts (yy,mm,dd) to yyyy-mm-dd string. Can also pass in custom glue instead of `-`'''
     yy, mm, dd = d 
-    return '%d-%.2d-%.2d' % (yy, mm, dd)
+    return '%d%s%.2d%s%.2d' % (yy, glue, mm, glue, dd)
 
 def get_devs() -> list[str]:
-    f = open('devs.json', 'r')
+    '''Load list of usernames from devs.json'''
+    path = 'devs.json'
+    if not os.path.exists(path):
+        print('Error: missing `devs.json` file')
+        sys.exit(1)
+
+    f = open(path, 'r')
     devs: list[str] = json.load(f)
     f.close()
     return devs
 
-def get_count_levels(contribs: dict[str, Contrib], date_range: DateRange) -> list[IntPair]:
+def get_count_levels(contribs: dict[str, IntPair], date_range: DateRange) -> list[IntPair]:
     pairs: list[IntPair] = []
     # For now, assumes same month
     # TODO: fix date range that spans two months
@@ -123,12 +147,12 @@ def get_count_levels(contribs: dict[str, Contrib], date_range: DateRange) -> lis
         key = date_to_string((year, month, day))
         count, level = 0, 0
         if key in contribs:
-            count = contribs[key].count
-            level = contribs[key].level
+            count, level  = contribs[key]
         pairs.append((count, level))
     return pairs
 
-def create_grid_file(reps: dict[str, str]):
+def create_output(filename: str, reps: dict[str, str]):
+    '''Create output HTML file, replace template placeholders, save HTML file and open in browser'''
     f = open('template.html', 'r')
     body = ''.join(line for line in f.readlines())
     f.close()
@@ -137,7 +161,7 @@ def create_grid_file(reps: dict[str, str]):
         key = '%%%s%%' % key 
         body = body.replace(key, replacement)
 
-    path = 'out.html'
+    path = '%s/%s.html' % (OUT_DIR, filename)
     f = open(path, 'w')
     f.write(body)
     f.close() 
@@ -147,16 +171,24 @@ def create_grid_file(reps: dict[str, str]):
     url = 'file://' + full_path 
     webbrowser.open_new_tab(url)
 
+def create_filename(date_range: DateRange) -> str: 
+    '''Create yyyymmdd_yyyymmdd filename from DateRange'''
+    start, end = date_range 
+    start_date = date_to_string(start, glue='')
+    end_date   = date_to_string(end  , glue='')
+    return '%s_%s' % (start_date, end_date)
+
 if __name__ == '__main__':
-    fetch_dev_contributions()
+    fetch_weekly_contributions()
 
 '''
 TODO
 [ ] Fix range that spans two months (e.g. last week of Jan - first week of Feb)
     - get_count_levels
-    - get_current_week
+    - get_week_of
 [ ] Detect current month automatically 
 [ ] Generate monthly report
     - Separate into days (Mon-Fri) + weekends 
 [ ] Use Github API for public events
+[ ] Measure weight of activity (e.g. create repo = 1, commit with 2 lines of change vs 100 updates)
 '''
