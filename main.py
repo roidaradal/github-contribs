@@ -14,17 +14,23 @@ HTML_URL: str = 'https://github.com/users/%s/contributions?from=%s'
 API_URL : str = 'https://api.github.com/users/%s/events/public'
 OUT_DIR : str = 'out'
 
-def fetch_weekly_contributions():
-    '''Fetch weekly contributions of usernames found in devs.json'''
-    start, end = get_week()
+class Config:
+    def __init__(self):
+        self.date_range: DateRange = get_week_of(date.today())  # Default: Current week 
+        self.input_path: str = 'devs.json'                      # Default: devs.json
 
-    usernames = get_devs()
+def fetch_weekly_contributions():
+    '''Fetch weekly contributions of usernames found in input_path'''
+    cfg = get_config()
+    start, end = cfg.date_range
+
+    usernames = get_devs(cfg)
     max_length = max(len(username) for username in usernames)
     template = '%%-%ds\t%%3d\t%%s' % max_length
 
     total: dict[str, int] = {}
     count_levels: dict[str, list[IntPair]] = {}
-    for username in get_devs():
+    for username in usernames:
         contribs = fetch_contributions(username, (start, end))
         count_levels[username] = get_count_levels(contribs, (start, end))
         total[username] = sum(count for (count,_) in contribs.values())
@@ -62,7 +68,7 @@ def fetch_weekly_contributions():
     create_output(filename, reps)
 
 def fetch_contributions(username: str, date_range: DateRange) -> dict[str, IntPair]:
-    ''' Returns dict{username => (count, level)}'''
+    ''' Returns dict{date => (count, level)} contributions of username'''
     # Start from January 1 of current year
     year_start = date_to_string((date_range[0][0], 1, 1))
     url = HTML_URL % (username, year_start)
@@ -94,15 +100,16 @@ def fetch_contributions(username: str, date_range: DateRange) -> dict[str, IntPa
 
 ################### UTILITY FUNCTIONS #########################
 
-def get_week() -> DateRange:
-    '''Get week from week=yyyy-mm-dd argument. Defaults to current week.'''
+def get_config() -> Config:
+    '''Build Config object from command-line arguments and default values'''
+    cfg = Config()
     for arg in sys.argv[1:]:
         if arg.startswith('week='):
-            p = [int(x, 10) for x in arg.split('=')[1].split('-')]
-            return get_week_of(date(p[0], p[1], p[2]))
-        
-    # Default: Current week
-    return get_week_of(date.today())
+            given_date = arg.split('=')[1]
+            cfg.date_range = get_week_of(date(*date_from_string(given_date)))
+        elif arg.startswith('input='):
+            cfg.input_path = arg.split('=')[1]
+    return cfg
 
 def get_week_of(d: date) -> DateRange:
     # For now, assumes same month 
@@ -114,7 +121,7 @@ def get_week_of(d: date) -> DateRange:
 
 def date_from_string(d: str) -> Date:
     '''Converts yyyy-mm-dd string to (yy,mm,dd) date'''
-    parts = [int(x) for x in d.split('-')]
+    parts = [int(x, 10) for x in d.split('-')]
     return (parts[0], parts[1], parts[2])
 
 def date_to_string(d: Date, glue: str = '-') -> str:
@@ -122,11 +129,11 @@ def date_to_string(d: Date, glue: str = '-') -> str:
     yy, mm, dd = d 
     return '%d%s%.2d%s%.2d' % (yy, glue, mm, glue, dd)
 
-def get_devs() -> list[str]:
-    '''Load list of usernames from devs.json'''
-    path = 'devs.json'
+def get_devs(cfg: Config) -> list[str]:
+    '''Load list of usernames from input_path (default: devs.json)'''
+    path = cfg.input_path
     if not os.path.exists(path):
-        print('Error: missing `devs.json` file')
+        print('Error: path `%s` does not exist' % path)
         sys.exit(1)
 
     f = open(path, 'r')
