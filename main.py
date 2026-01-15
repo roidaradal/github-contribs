@@ -154,10 +154,7 @@ def get_count_levels(contribs: dict[str, IntPair], date_range: DateRange) -> lis
 
 def create_output(filename: str, reps: dict[str, str]):
     '''Create output HTML file, replace template placeholders, save HTML file and open in browser'''
-    f = open('template.html', 'r')
-    body = ''.join(line for line in f.readlines())
-    f.close()
-
+    body = weekly_template[:]
     for key, replacement in reps.items():
         key = '%%%s%%' % key 
         body = body.replace(key, replacement)
@@ -179,6 +176,68 @@ def create_filename(date_range: DateRange) -> str:
     end_date   = date_to_string(end  , glue='')
     return '%s_%s' % (start_date, end_date)
 
+weekly_template = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GitHub Contributions</title>
+    <style>
+        table {
+            border-top: 1px solid black;
+            border-left: 1px solid black;
+            border-collapse: collapse;
+            margin: 1em;
+            float: left;
+        }
+        th, td {
+            padding: 5px; 
+            border-right: 1px solid black;
+            border-bottom: 1px solid black;
+        }
+        th.level0 {
+            color: white;
+            background-color: #151b23;
+        }
+        th.level1 {
+            color: white;
+            background-color: #033a16;
+        }
+        th.level2 {
+            background-color: #196c2e;   
+        }
+        th.level3 {
+            background-color: #2ea043;
+        }
+        th.level4 {
+            background-color: #56d364;
+        }
+        img {
+            float: left;
+        }
+    </style>
+</head>
+<body>
+<table>
+    <thead>
+        <tr>
+            <th colspan="6">%Title%</th>
+        </tr>
+        <tr>
+            <th>Dev</th>
+            <th>Mon</th>
+            <th>Tue</th>
+            <th>Wed</th>
+            <th>Thu</th>
+            <th>Fri</th>
+        </tr>
+    </thead>
+    <tbody>%Table%</tbody>
+</table>
+<img src="%Filename%.png" />
+</body>
+</html>
+'''
+
 if __name__ == '__main__':
     fetch_weekly_contributions()
 
@@ -190,4 +249,5 @@ TODO
     - Separate into days (Mon-Fri) + weekends 
 [ ] Use Github API for public events
 [ ] Measure weight of activity (e.g. create repo = 1, commit with 2 lines of change vs 100 updates)
+[ ] Convert to webapp
 '''
