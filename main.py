@@ -3,7 +3,7 @@
 
 import json, requests, webbrowser, os, sys
 import matplotlib.pyplot as plt 
-from datetime import date
+from datetime import date, timedelta
 from bs4 import BeautifulSoup
 
 Date = tuple[int,int,int]
@@ -112,12 +112,10 @@ def get_config() -> Config:
     return cfg
 
 def get_week_of(d: date) -> DateRange:
-    # For now, assumes same month 
-    # TODO: fix for week that spans two months
-    year, month, day = d.year, d.month, d.day 
-    start_day = day - d.weekday() # start at Monday 
-    end_day = start_day + 4 # end at Friday
-    return (year, month, start_day), (year, month, end_day)
+    '''Gets the Monday-Friday DateRange of the given date'''
+    start = d - timedelta(days=d.weekday()) # Adjust from current date -> Monday
+    end = start + timedelta(days=4)         # Add 4 days from Monday -> Friday
+    return (start.year, start.month, start.day), (end.year, end.month, end.day)
 
 def date_from_string(d: str) -> Date:
     '''Converts yyyy-mm-dd string to (yy,mm,dd) date'''
@@ -142,20 +140,16 @@ def get_devs(cfg: Config) -> list[str]:
     return devs
 
 def get_count_levels(contribs: dict[str, IntPair], date_range: DateRange) -> list[IntPair]:
+    '''Get the (count,level) for each day in the date range'''
     pairs: list[IntPair] = []
-    # For now, assumes same month
-    # TODO: fix date range that spans two months
-
-    start, end = date_range
-    year, month = start[0:2]
-    start_day = start[2]
-    last_day = end[2]
-    for day in range(start_day, last_day+1):
-        key = date_to_string((year, month, day))
-        count, level = 0, 0
-        if key in contribs:
-            count, level  = contribs[key]
+    start, end = [date(*d) for d in date_range]
+    curr = start 
+    while curr <= end:
+        key = str(curr)
+        count, level = contribs.get(key, (0, 0))
         pairs.append((count, level))
+        curr += timedelta(days=1)
+
     return pairs
 
 def create_output(filename: str, reps: dict[str, str]):
@@ -190,9 +184,7 @@ if __name__ == '__main__':
 
 '''
 TODO
-[ ] Fix range that spans two months (e.g. last week of Jan - first week of Feb)
-    - get_count_levels
-    - get_week_of
+[ ] Save img as base64 and render directly (no saving of separate png file)
 [ ] Detect current month automatically 
 [ ] Generate monthly report
     - Separate into days (Mon-Fri) + weekends 
