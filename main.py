@@ -70,7 +70,8 @@ def fetch_weekly_contributions():
         tbl.append('<tr>')
         tbl.append('<td>%s</td>' % username)
         for count, level in count_levels[username]:
-            tbl.append('<th class="level%d">%d</th>' % (level, count))
+            tbl.append('<td class="bold center level%d">%d</td>' % (level, count))
+        tbl.append('<td class="bold right">%d</td>' % total[username])
         tbl.append('</tr>')
     reps['Table'] = ''.join(tbl)
     create_output(filename, reps)
@@ -197,26 +198,29 @@ weekly_template = '''
             margin: 1em;
             float: left;
         }
+        td.right { text-align: right; }
+        td.center { text-align: center; }
+        td.bold { font-weight: bold; }
         th, td {
             padding: 5px; 
             border-right: 1px solid black;
             border-bottom: 1px solid black;
         }
-        th.level0 {
+        td.level0 {
             color: white;
             background-color: #151b23;
         }
-        th.level1 {
+        td.level1 {
             color: white;
             background-color: #033a16;
         }
-        th.level2 {
+        td.level2 {
             background-color: #196c2e;   
         }
-        th.level3 {
+        td.level3 {
             background-color: #2ea043;
         }
-        th.level4 {
+        td.level4 {
             background-color: #56d364;
         }
         img {
@@ -228,7 +232,7 @@ weekly_template = '''
 <table>
     <thead>
         <tr>
-            <th colspan="6">%Title%</th>
+            <th colspan="7">%Title%</th>
         </tr>
         <tr>
             <th>Dev</th>
@@ -237,6 +241,7 @@ weekly_template = '''
             <th>Wed</th>
             <th>Thu</th>
             <th>Fri</th>
+            <th>Total</th>
         </tr>
     </thead>
     <tbody>%Table%</tbody>
@@ -251,10 +256,10 @@ if __name__ == '__main__':
 
 '''
 TODO
-[ ] Save img as base64 and render directly (no saving of separate png file)
 [ ] Detect current month automatically 
 [ ] Generate monthly report
     - Separate into days (Mon-Fri) + weekends 
+    - Add 4 tabs for the weekly reports
 [ ] Use Github API for public events
 [ ] Measure weight of activity (e.g. create repo = 1, commit with 2 lines of change vs 100 updates)
 [ ] Convert to webapp
