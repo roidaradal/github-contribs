@@ -1,7 +1,9 @@
 # Github Contributions 
 # John Roy Daradal 
 
-import json, requests, webbrowser, os, sys
+import os, sys, json
+import requests, webbrowser
+import io, base64
 import matplotlib.pyplot as plt 
 from datetime import date, timedelta
 from bs4 import BeautifulSoup
@@ -45,18 +47,24 @@ def fetch_weekly_contributions():
 
     if not os.path.exists(OUT_DIR): os.mkdir(OUT_DIR)
     
-    _, ax = plt.subplots()
+    _, ax = plt.subplots(figsize=(6,4))
     bars = plt.barh(names, counts)
     ax.bar_label(bars, label_type='edge', padding=5)
-    plt.title(title)
     plt.xlabel('Contribs')
     plt.ylabel('Devs')
-    path = '%s/%s.png' % (OUT_DIR, filename)
-    plt.savefig(path, bbox_inches='tight')
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    plt.close()
+
+    # Encode image data to base64 string
+    buf.seek(0) # Rewind buffer back to start
+    img_bytes = base64.b64encode(buf.getvalue())
+    buf.close()
+    img_string = img_bytes.decode('utf-8')
 
     reps: dict[str, str] = {}
     reps['Title'] = title
-    reps['Filename'] = filename
+    reps['ImgData'] = img_string
     tbl: list[str] = []
     for username in reversed(names):
         tbl.append('<tr>')
@@ -233,7 +241,7 @@ weekly_template = '''
     </thead>
     <tbody>%Table%</tbody>
 </table>
-<img src="%Filename%.png" />
+<img src="data:image/png;base64,%ImgData%" />
 </body>
 </html>
 '''
