@@ -1,18 +1,24 @@
 # Github Contributions 
 # John Roy Daradal 
 
-import os, sys
-import calendar
+import calendar, os, sys
+import requests
 from datetime import date, datetime
+from bs4 import BeautifulSoup
+
+IntPair = tuple[int,int]
+
+HTML_URL: str = 'https://github.com/users/%s/contributions?from=%s' # (username, start_date)
 
 def main():
     '''Main function'''
     user_date, input_path = get_args()
-    print(user_date)
     usernames = get_usernames(input_path)
-    print('Users:', len(usernames))
-    for username in usernames:
-        print(f'  • {username}')
+
+    username = usernames[0]
+    contribs = fetch_user_month_contributions(username, user_date)
+    for date in sorted(contribs.keys()):
+        print(date, contribs[date])
 
 def get_args() -> tuple[date, str]:
     '''Returns the chosen date (default: today) and input_path (default: ./devs.txt)'''
@@ -40,6 +46,9 @@ def get_usernames(path: str) -> list[str]:
         sys.exit(1)
 
 def get_month_weeks(d: date) -> list[list[int]]:
+    '''Return list of week dates for given month'''
+    # Note: This can also be achieved by calendar.monthcalendar, 
+    # but it doesn't provide a week0 row if day 1 starts on Monday
     weeks: list[list[int]] = []
 
     # Get first weekday and last date of month
@@ -69,6 +78,41 @@ def get_month_weeks(d: date) -> list[list[int]]:
         curr = limit
     return weeks
 
+def fetch_user_month_contributions(username: str, d: date) -> dict[int, IntPair]:
+    '''Return dict{day => (count, level)} contributions of username for given month'''
+    # Start GitHub page from January 1 of given year 
+    year_start = date(d.year, 1, 1)
+    url = HTML_URL % (username, str(year_start))
+    
+    # Setup the month date range
+    last_month_day = calendar.monthrange(d.year, d.month)[1]
+    month_start = str(date(d.year, d.month, 1))
+    month_end   = str(date(d.year, d.month, last_month_day))
+
+    # Fetch HTML page and use BeautifulSoup 
+    resp = requests.get(url)
+    soup = BeautifulSoup(resp.text, 'lxml')
+
+    # Get contributions data
+    contribs: dict[int, IntPair] = {}
+    for cell in soup.select('td.ContributionCalendar-day'):
+        cell_date = str(cell['data-date'])
+        if not (month_start <= cell_date <= month_end): continue # skip if not within month range
+        day = int(cell_date.split('-')[2], 10)
+
+        # Find tooltip associated with td cell 
+        tooltip = soup.find('tool-tip', attrs={'for': cell['id']})
+
+        # Extract count from tooltip's inner text 
+        text = 'No' # default: No contributions 
+        if tooltip: text = tooltip.get_text()
+
+        count_text = text.strip().split()[0]
+        count = 0 if count_text == 'No' else int(count_text)
+        level = int(str(cell['data-level']))
+        contribs[day] = (count, level)
+    return contribs
+
 def new_date(date_string: str) -> date:
     '''Create new date from date_string, defaults to today if given date_string is invalid'''
     try:
@@ -78,11 +122,5 @@ def new_date(date_string: str) -> date:
         return date.today()
 
 if __name__ == '__main__':
-    # main()
-    for month in range(1, 13):
-        user_date = date(2026, month, 1)
-        print('\n'+ str(user_date))
-        for week in get_month_weeks(user_date):
-            row = ['%2d' % day for day in week]
-            print(' '.join(row))
+    main()
     
