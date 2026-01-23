@@ -6,19 +6,41 @@ import requests
 from datetime import date, datetime
 from bs4 import BeautifulSoup
 
-IntPair = tuple[int,int]
-
 HTML_URL: str = 'https://github.com/users/%s/contributions?from=%s' # (username, start_date)
+API_URL : str = 'https://api.github.com/users/%s/events/public'
+OUT_DIR : str = '.contribs'
+
+IntPair = tuple[int,int]
+Contribs = dict[int, IntPair]
+
+color_reset = '\033[0m'
+green   = lambda text: '\033[32m%s%s' % (text, color_reset)
+yellow  = lambda text: '\033[33m%s%s' % (text, color_reset)
+cyan    = lambda text: '\033[36m%s%s' % (text, color_reset)
 
 def main():
     '''Main function'''
     user_date, input_path = get_args()
+    month = user_date.strftime('%B %Y')
     usernames = get_usernames(input_path)
 
-    username = usernames[0]
-    contribs = fetch_user_month_contributions(username, user_date)
-    for date in sorted(contribs.keys()):
-        print(date, contribs[date])
+    reps: dict[str, str] = {
+        'Title': f'{month} GitHub Contributions',
+        'Sidebar': 'This is the sidebar',
+        'Body': 'This is the body',
+    }
+    create_output(reps)
+
+    # max_length = max(len(uname) for uname in usernames)
+    # template = '• %%-%ds\t\t%%3d' % max_length
+
+    # print('Fetching %s GitHub contributions from %s...' % (green(month), yellow(f'`{input_path}`')))
+
+    # contribs: dict[str, Contribs] = {}
+    # for username in usernames:
+    #     contribs[username] = fetch_user_month_contributions(username, user_date)
+    #     total = sum(count for (count,_) in contribs[username].values())
+    #     print(template % (cyan(username), total))
 
 def get_args() -> tuple[date, str]:
     '''Returns the chosen date (default: today) and input_path (default: ./devs.txt)'''
@@ -78,7 +100,7 @@ def get_month_weeks(d: date) -> list[list[int]]:
         curr = limit
     return weeks
 
-def fetch_user_month_contributions(username: str, d: date) -> dict[int, IntPair]:
+def fetch_user_month_contributions(username: str, d: date) -> Contribs:
     '''Return dict{day => (count, level)} contributions of username for given month'''
     # Start GitHub page from January 1 of given year 
     year_start = date(d.year, 1, 1)
@@ -94,7 +116,7 @@ def fetch_user_month_contributions(username: str, d: date) -> dict[int, IntPair]
     soup = BeautifulSoup(resp.text, 'lxml')
 
     # Get contributions data
-    contribs: dict[int, IntPair] = {}
+    contribs: Contribs = {}
     for cell in soup.select('td.ContributionCalendar-day'):
         cell_date = str(cell['data-date'])
         if not (month_start <= cell_date <= month_end): continue # skip if not within month range
@@ -120,6 +142,83 @@ def new_date(date_string: str) -> date:
         return given_date.date()
     except:
         return date.today()
+
+def create_output(reps: dict[str, str]):
+    '''Create output HTML file, replace template placeholders, save HTML file and open in browser'''
+    body = html_body.format(**reps)
+    html = html_head + body
+    print(html)
+
+
+html_head = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GitHub Contributions</title>
+    <style>
+        table {
+            border-top: 1px solid black;
+            border-left: 1px solid black;
+            border-collapse: collapse;
+            margin: 1em;
+        }
+        th, td {
+            padding: 5px; 
+            border-right: 1px solid black;
+            border-bottom: 1px solid black;
+        }
+        td.level0 { background-color: #151b23; color: #151b23; }
+        td.level1 { background-color: #033a16; color: white;   }
+        td.level2 { background-color: #196c2e; }
+        td.level3 { background-color: #2ea043; }
+        td.level4 { background-color: #56d364; }
+        td.left { text-align: left; }
+        td.right { text-align: right; }
+        td.center { text-align: center; }
+        td.bold { font-weight: bold; }
+        div { margin: 0; padding: 0 }
+        #sidebar {
+            position: absolute;
+            top: 0%; left: 0%;
+            width: 10%; height: 100%;
+            background-color: yellow;
+        }
+        #main {
+            position: absolute;
+            top: 0%; left: 10%;
+            width: 90%; height: 100%;
+            background-color: aqua;
+        }
+    </style>
+</head>
+''' 
+
+html_body = '''
+<body>
+<div id="sidebar">{Sidebar}</div>
+<div id="main">
+    <h1>{Title}</h1>
+    {Body}
+</div>
+</body>
+</html>
+'''
+
+table_template = '''
+<table>
+    <thead>
+        <tr>
+            <th colspan="9">{Title}</th>
+        </tr>
+        <tr>
+            <th>Dev</th><th>Mon</th><th>Tue</th>
+            <th>Wed</th><th>Thu</th><th>Fri</th>
+            <th>Sat</th><th>Sun</th><th>Total</th>
+        </tr>
+    </thead>
+    <tbody>{Table}</tbody>
+</table>
+'''
 
 if __name__ == '__main__':
     main()
