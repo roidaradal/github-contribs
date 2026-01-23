@@ -2,7 +2,7 @@
 # John Roy Daradal 
 
 import calendar, os, sys
-import requests
+import requests, webbrowser
 from datetime import date, datetime
 from bs4 import BeautifulSoup
 
@@ -22,15 +22,17 @@ def main():
     '''Main function'''
     user_date, input_path = get_args()
     month = user_date.strftime('%B %Y')
-    usernames = get_usernames(input_path)
+    weeks = get_month_weeks(user_date)
+    week_index = get_week_of(user_date, weeks)
 
     reps: dict[str, str] = {
-        'Title': f'{month} GitHub Contributions',
-        'Sidebar': 'This is the sidebar',
-        'Body': 'This is the body',
+        'Title':    f'{month} GitHub Contributions',
+        'Sidebar':  create_sidebar(weeks, week_index),
+        'Body':     create_body(weeks, week_index, month),
     }
     create_output(reps)
 
+    # usernames = get_usernames(input_path)
     # max_length = max(len(uname) for uname in usernames)
     # template = '• %%-%ds\t\t%%3d' % max_length
 
@@ -100,6 +102,20 @@ def get_month_weeks(d: date) -> list[list[int]]:
         curr = limit
     return weeks
 
+def get_week_of(d: date, weeks: list[list[int]]) -> int:
+    '''Get week index of given date'''
+    for i, week in enumerate(weeks):
+        if d.day in week: return i
+    return -1
+
+def new_date(date_string: str) -> date:
+    '''Create new date from date_string, defaults to today if given date_string is invalid'''
+    try:
+        given_date = datetime.strptime(date_string, '%Y-%m-%d')
+        return given_date.date()
+    except:
+        return date.today()
+    
 def fetch_user_month_contributions(username: str, d: date) -> Contribs:
     '''Return dict{day => (count, level)} contributions of username for given month'''
     # Start GitHub page from January 1 of given year 
@@ -135,20 +151,46 @@ def fetch_user_month_contributions(username: str, d: date) -> Contribs:
         contribs[day] = (count, level)
     return contribs
 
-def new_date(date_string: str) -> date:
-    '''Create new date from date_string, defaults to today if given date_string is invalid'''
-    try:
-        given_date = datetime.strptime(date_string, '%Y-%m-%d')
-        return given_date.date()
-    except:
-        return date.today()
+def create_sidebar(weeks: list[list[int]], selected: int) -> str:
+    '''Create sidebar content'''
+    sidebar: list[str] = []
+    for week, days in enumerate(weeks):
+        if week == 0 and sum(days) == 0: continue # skip if no week0
+
+        active = "active" if selected == week else ""
+        sidebar.append(f'<div class="tab {active}" id="tab-week{week}">Week {week}</div>')
+    
+    return '\n'.join(sidebar)
+
+def create_body(weeks: list[list[int]], selected: int, month: str) -> str:
+    '''Create body content'''
+    body: list[str] = []
+    for week, days in enumerate(weeks):
+        if week == 0 and sum(days) == 0: continue # skip if no week0
+
+        title = '%.2d - %.2d %s' % (min([d for d in days if d > 0]), max(days), month)
+        reps: dict[str, str] = {
+            'Class' : 'hidden' if selected != week else '',
+            'Title' : title,
+            'Table' : '',
+        }
+        table = table_template.format(**reps)
+        body.append(table)
+    return '\n'.join(body)
 
 def create_output(reps: dict[str, str]):
     '''Create output HTML file, replace template placeholders, save HTML file and open in browser'''
     body = html_body.format(**reps)
     html = html_head + body
-    print(html)
-
+    
+    # Write html to file
+    path = 'out.html' # Temporary while testing, TODO: replace path 
+    with open(path, 'w') as f:
+        f.write(html)
+    
+    # Open html in browser
+    url = 'file://' + os.path.abspath(path)
+    webbrowser.open_new_tab(url)
 
 html_head = '''
 <!DOCTYPE html>
@@ -180,14 +222,33 @@ html_head = '''
         #sidebar {
             position: absolute;
             top: 0%; left: 0%;
-            width: 10%; height: 100%;
-            background-color: yellow;
+            width: 15%; height: 100%;
+            border-right: 1px solid black;
         }
         #main {
             position: absolute;
-            top: 0%; left: 10%;
-            width: 90%; height: 100%;
-            background-color: aqua;
+            top: 0%; left: 15%;
+            width: 82%; height: 100%;
+            padding-left: 3%;
+        }
+        div.tab {
+            position: relative;
+            border: 1px solid black;
+            width: 80%;
+            padding: 5px;
+            margin: 1em auto;
+            margin-top: 3em;
+            text-align: center;
+        }
+        div.tab:hover {
+            cursor: pointer;
+        }
+        div.tab.active {
+            background-color: chartreuse;
+            font-weight: bold;
+        }
+        .hidden {
+            display: none !important;
         }
     </style>
 </head>
@@ -205,15 +266,15 @@ html_body = '''
 '''
 
 table_template = '''
-<table>
+<table class="{Class}">
     <thead>
         <tr>
-            <th colspan="9">{Title}</th>
+            <th colspan="7">{Title}</th>
         </tr>
         <tr>
             <th>Dev</th><th>Mon</th><th>Tue</th>
             <th>Wed</th><th>Thu</th><th>Fri</th>
-            <th>Sat</th><th>Sun</th><th>Total</th>
+            th>Total</th>
         </tr>
     </thead>
     <tbody>{Table}</tbody>
