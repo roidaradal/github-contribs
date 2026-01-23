@@ -1,19 +1,23 @@
 # github-contribs 
 
-Python tool for pulling GitHub contribution count of GitHub users
+Python script for pulling public GitHub contribution count of GitHub users
 
 ## Usage 
-Prepare a JSON file which contains the list of GitHub usernames (default: `devs.json`)
+Prepare a text file which contains the list of GitHub usernames (default: `devs.txt`)
 
-Run `python main.py (week=yyyy-mm-dd) (input=devs.json)` 
+Run:
 
-This will pull the users' GitHub pages, and generate a report of their contributions for the week.
+```bash
+python github.py (date=yyyy-mm-dd) (input=devs.txt) 
+```
+
+This will look at the users' GitHub pages, and generate a report of their contributions for the month.
 
 ## Options
-* `week=yyyy-mm-dd` - used to generate a weekly report for a custom week (default: current week)
-* `input=devs.json` - used to set a different input file path (default: `devs.json`)
+* `date=yyyy-mm-dd` - used to generate a monthly report for a custom month (default: current month)
+* `input=devs.txt` - used to set a different input file path (default: `devs.txt`)
 
 ## Dependencies
-* `requests` - for making HTTP requests
-* `BeautifulSoup4` - for traversing HTML DOM
-* `matplotlib` - for bar graph
+* [`requests`](https://pypi.org/project/requests/) - for making HTTP requests
+* [`BeautifulSoup4`](https://pypi.org/project/beautifulsoup4/) - for traversing HTML DOM
+* [`matplotlib`](https://pypi.org/project/matplotlib/) - for bar graph
