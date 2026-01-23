@@ -2,6 +2,7 @@
 # John Roy Daradal 
 
 import os, sys
+import calendar
 from datetime import date, datetime
 
 def main():
@@ -18,16 +19,11 @@ def get_args() -> tuple[date, str]:
     user_date = date.today()
     input_path = 'devs.txt' 
     for arg in sys.argv[1:]:
-        try:
-            if arg.startswith('date='):
-                value = arg.split('=')[1]
-                given_date = datetime.strptime(value, '%Y-%m-%d')
-                user_date = given_date.date()
-            elif arg.startswith('input='):
-                value = arg.split('=')[1]
-                input_path = value
-        except:
-            continue
+        if arg.startswith('date='):
+            value = arg.split('=')[1]
+            user_date = new_date(value)
+        elif arg.startswith('input='):
+            input_path = arg.split('=')[1]
     return user_date, input_path
 
 def get_usernames(path: str) -> list[str]:
@@ -43,5 +39,50 @@ def get_usernames(path: str) -> list[str]:
         print('Error: ', err)
         sys.exit(1)
 
+def get_month_weeks(d: date) -> list[list[int]]:
+    weeks: list[list[int]] = []
+
+    # Get first weekday and last date of month
+    first_day, last_date = calendar.monthrange(d.year, d.month)
+    month_limit = last_date + 1
+
+    # Process week 0 = first incomplete week
+    curr = 0
+    week0 = [0] * 7
+    if first_day == 0:
+        # If first day is Monday, week 0 is all 0s
+        curr = 1
+    else:
+        # Create week 0
+        last_day = 7 - first_day
+        week0[first_day:] = list(range(1, last_day+1))
+        curr = last_day + 1
+    weeks.append(week0)
+
+    # Process month weeks (max = week5) 
+    for _ in range(5): 
+        limit = min(curr + 7, month_limit)
+        week = list(range(curr, limit))
+        week += [0] * (7 - len(week)) # fill with 0s at back to ensure 7 days
+        weeks.append(week)
+        if limit == month_limit: break
+        curr = limit
+    return weeks
+
+def new_date(date_string: str) -> date:
+    '''Create new date from date_string, defaults to today if given date_string is invalid'''
+    try:
+        given_date = datetime.strptime(date_string, '%Y-%m-%d')
+        return given_date.date()
+    except:
+        return date.today()
+
 if __name__ == '__main__':
-    main()
+    # main()
+    for month in range(1, 13):
+        user_date = date(2026, month, 1)
+        print('\n'+ str(user_date))
+        for week in get_month_weeks(user_date):
+            row = ['%2d' % day for day in week]
+            print(' '.join(row))
+    
