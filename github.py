@@ -25,24 +25,24 @@ def main():
     weeks = get_month_weeks(user_date)
     week_index = get_week_of(user_date, weeks)
 
+    usernames = get_usernames(input_path)
+    max_length = max(len(cyan(uname)) for uname in usernames)
+    template = '• %%-%ds\t\t%%3d' % max_length
+
+    print('Fetching %s GitHub contributions from %s...' % (green(month), yellow(f'`{input_path}`')))
+
+    contribs: dict[str, Contribs] = {}
+    for username in usernames:
+        contribs[username] = fetch_user_month_contributions(username, user_date)
+        total = sum(count for (count,_) in contribs[username].values())
+        print(template % (cyan(username), total))
+
     reps: dict[str, str] = {
         'Title':    f'{month} GitHub Contributions',
         'Sidebar':  create_sidebar(weeks, week_index),
-        'Body':     create_body(weeks, week_index, month),
+        'Body':     create_body(contribs, weeks, week_index, month),
     }
     create_output(reps)
-
-    # usernames = get_usernames(input_path)
-    # max_length = max(len(uname) for uname in usernames)
-    # template = '• %%-%ds\t\t%%3d' % max_length
-
-    # print('Fetching %s GitHub contributions from %s...' % (green(month), yellow(f'`{input_path}`')))
-
-    # contribs: dict[str, Contribs] = {}
-    # for username in usernames:
-    #     contribs[username] = fetch_user_month_contributions(username, user_date)
-    #     total = sum(count for (count,_) in contribs[username].values())
-    #     print(template % (cyan(username), total))
 
 def get_args() -> tuple[date, str]:
     '''Returns the chosen date (default: today) and input_path (default: ./devs.txt)'''
@@ -162,7 +162,7 @@ def create_sidebar(weeks: list[list[int]], selected: int) -> str:
     
     return '\n'.join(sidebar)
 
-def create_body(weeks: list[list[int]], selected: int, month: str) -> str:
+def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected: int, month: str) -> str:
     '''Create body content'''
     body: list[str] = []
     for week, days in enumerate(weeks):
@@ -172,11 +172,37 @@ def create_body(weeks: list[list[int]], selected: int, month: str) -> str:
         reps: dict[str, str] = {
             'Class' : 'hidden' if selected != week else '',
             'Title' : title,
-            'Table' : '',
+            'Table' : create_table(contribs, days),
         }
         table = table_template.format(**reps)
         body.append(table)
     return '\n'.join(body)
+
+def create_table(contribs: dict[str, Contribs], days: list[int]) -> str:
+    '''Create table body for one week'''
+    total: dict[str, int] = {}
+    count_levels: dict[str, list[IntPair]] = {}
+    for username, user_contribs in contribs.items():
+        row: list[IntPair] = [user_contribs.get(day, (0,-1)) for day in days[:5]]
+        total[username] = sum(count for (count,_) in row)
+        count_levels[username] = row
+    
+    entries= sorted(total.items(), key=lambda x: x[1], reverse=True)
+    # names: list[str] = [x[0] for x in entries]
+    # counts: list[int] = [x[1] for x in entries]
+
+    tbl: list[str] = []
+    for username, total_count in entries:
+        tbl.append('<tr>')
+        tbl.append(f'<td class="left">{username}</td>')
+        for count, level in count_levels[username]:
+            if level == -1:
+                tbl.append('<td>&nbsp;</td>')
+            else:
+                tbl.append(f'<td class="bold center level{level}">{count}</td>')
+        tbl.append(f'<td class="bold right">{total_count}</td>')
+        tbl.append('</tr>')
+    return '\n'.join(tbl)
 
 def create_output(reps: dict[str, str]):
     '''Create output HTML file, replace template placeholders, save HTML file and open in browser'''
@@ -274,7 +300,7 @@ table_template = '''
         <tr>
             <th>Dev</th><th>Mon</th><th>Tue</th>
             <th>Wed</th><th>Thu</th><th>Fri</th>
-            th>Total</th>
+            <th>Total</th>
         </tr>
     </thead>
     <tbody>{Table}</tbody>
