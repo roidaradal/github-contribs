@@ -2,7 +2,9 @@
 # John Roy Daradal 
 
 import calendar, os, sys
+import io, base64
 import requests, webbrowser
+import matplotlib.pyplot as plt 
 from datetime import date, datetime
 from bs4 import BeautifulSoup
 
@@ -169,16 +171,18 @@ def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected:
         if week == 0 and sum(days) == 0: continue # skip if no week0
 
         title = '%.2d - %.2d %s' % (min([d for d in days if d > 0]), max(days), month)
+        tbl, img = create_table_image(contribs, days)
         reps: dict[str, str] = {
             'Class' : 'hidden' if selected != week else '',
             'Title' : title,
-            'Table' : create_table(contribs, days),
+            'Table' : tbl,
+            'Img'   : img,
         }
         table = table_template.format(**reps)
         body.append(table)
     return '\n'.join(body)
 
-def create_table(contribs: dict[str, Contribs], days: list[int]) -> str:
+def create_table_image(contribs: dict[str, Contribs], days: list[int]) -> tuple[str, str]:
     '''Create table body for one week'''
     total: dict[str, int] = {}
     count_levels: dict[str, list[IntPair]] = {}
@@ -187,12 +191,28 @@ def create_table(contribs: dict[str, Contribs], days: list[int]) -> str:
         total[username] = sum(count for (count,_) in row)
         count_levels[username] = row
     
-    entries= sorted(total.items(), key=lambda x: x[1], reverse=True)
-    # names: list[str] = [x[0] for x in entries]
-    # counts: list[int] = [x[1] for x in entries]
+    entries= sorted(total.items(), key=lambda x: x[1])
+    names: list[str] = [x[0] for x in entries]
+    counts: list[int] = [x[1] for x in entries]
+
+    # Plot bar graph
+    _, ax = plt.subplots(figsize=(6,4))
+    bars = plt.barh(names, counts)
+    ax.bar_label(bars, label_type='edge', padding=5)
+    plt.xlabel('Contribs')
+    plt.ylabel('Devs')
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    plt.close()
+
+    # Encode image data to base64 string
+    buf.seek(0) # Rewind buffer back to start
+    img_bytes = base64.b64encode(buf.getvalue())
+    buf.close()
+    img_string = img_bytes.decode('utf-8')
 
     tbl: list[str] = []
-    for username, total_count in entries:
+    for username, total_count in reversed(entries):
         tbl.append('<tr>')
         tbl.append(f'<td class="left">{username}</td>')
         for count, level in count_levels[username]:
@@ -202,7 +222,7 @@ def create_table(contribs: dict[str, Contribs], days: list[int]) -> str:
                 tbl.append(f'<td class="bold center level{level}">{count}</td>')
         tbl.append(f'<td class="bold right">{total_count}</td>')
         tbl.append('</tr>')
-    return '\n'.join(tbl)
+    return '\n'.join(tbl), img_string
 
 def create_output(reps: dict[str, str]):
     '''Create output HTML file, replace template placeholders, save HTML file and open in browser'''
@@ -229,6 +249,7 @@ html_head = '''
             border-left: 1px solid black;
             border-collapse: collapse;
             margin: 1em;
+            float: left;
         }
         th, td {
             padding: 5px; 
@@ -305,6 +326,7 @@ table_template = '''
     </thead>
     <tbody>{Table}</tbody>
 </table>
+<img class="{Class}" src="data:image/png;base64,{Img}" />
 '''
 
 if __name__ == '__main__':
