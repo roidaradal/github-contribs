@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from datetime import date, datetime
 from bs4 import BeautifulSoup
 
+LIMIT: int = 10
 HTML_URL: str = 'https://github.com/users/%s/contributions?from=%s' # (username, start_date)
 API_URL : str = 'https://api.github.com/users/%s/events/public'
 OUT_DIR : str = '.contribs'
@@ -66,7 +67,12 @@ def get_usernames(path: str) -> list[str]:
     
     try:
         with open(path, 'r') as f:
-            return [line.strip() for line in f.readlines() if line.strip() != '']
+            usernames = [line.strip() for line in f.readlines() if line.strip() != '']
+        count = len(usernames)
+        if count > LIMIT:
+            print(f'Error: Found {count} usernames, exceeds limit ({LIMIT})')
+            sys.exit(1)  
+        return usernames
     except Exception as err:
         print('Error: ', err)
         sys.exit(1)
@@ -187,7 +193,7 @@ def create_table_image(contribs: dict[str, Contribs], days: list[int]) -> tuple[
     total: dict[str, int] = {}
     count_levels: dict[str, list[IntPair]] = {}
     for username, user_contribs in contribs.items():
-        row: list[IntPair] = [user_contribs.get(day, (0,-1)) for day in days[:5]]
+        row: list[IntPair] = [user_contribs.get(day, (0,-1)) for day in days]
         total[username] = sum(count for (count,_) in row)
         count_levels[username] = row
     
@@ -316,12 +322,12 @@ table_template = '''
 <table class="{Class}">
     <thead>
         <tr>
-            <th colspan="7">{Title}</th>
+            <th colspan="9">{Title}</th>
         </tr>
         <tr>
             <th>Dev</th><th>Mon</th><th>Tue</th>
             <th>Wed</th><th>Thu</th><th>Fri</th>
-            <th>Total</th>
+            <th>Sat</th><th>Sun</th><th>Total</th>
         </tr>
     </thead>
     <tbody>{Table}</tbody>
@@ -331,4 +337,25 @@ table_template = '''
 
 if __name__ == '__main__':
     main()
-    
+
+'''
+TODO:
+[ ] Tab Selector 
+[ ] Save html to ~/.contribs/
+    - if not os.path.exists(outDir): os.mkdir(outDir)
+[ ] Save contribution results to file in ~/.contribs 
+[ ] Load contributions from cached file
+[ ] Convert bar graph to HTML color gradients
+    - Remove matplotlib dependency 
+[ ] Monthly Report
+    - Flag to toggle weekend contribution counts => should recompute totals and reorder list 
+[ ] Summary Tab 
+    - Display Github month calendar per user 
+    - Add pace for month, year (e.g. on pace for X contributions by end of month/year)
+    - Line graph of Daily contributions for month
+    - Line graph of Weekly contributions for month
+[ ] Use Github API for public events 
+[ ] Check what using an API key unlocks in terms of organization
+[ ] Measure weight of activity (e.g. create repo = 1, commit with 2 lines of change vs 100 updates)
+[ ] Convert to webapp
+'''
