@@ -182,9 +182,13 @@ def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected:
         week_end = max(days)
         title = '%.2d - %.2d %s' % (week_start, week_end, month)
         name = str(week)
+        class_name = 'hidden' if selected != week else ''
         tbl, img = create_table_image(contribs, days)
+        if img != '':
+            img = f'<img id="img-{name}" class="{class_name}" src="data:image/png;base64,{img}" />'
+        
         reps: dict[str, str] = {
-            'Class' : 'hidden' if selected != week else '',
+            'Class' : class_name,
             'Title' : title,
             'Table' : tbl,
             'Img'   : img,
@@ -208,21 +212,23 @@ def create_table_image(contribs: dict[str, Contribs], days: list[int]) -> tuple[
     names: list[str] = [x[0] for x in entries]
     counts: list[int] = [x[1] for x in entries]
 
-    # Plot bar graph
-    _, ax = plt.subplots(figsize=(6,4))
-    bars = plt.barh(names, counts)
-    ax.bar_label(bars, label_type='edge', padding=5)
-    plt.xlabel('Contribs')
-    plt.ylabel('Devs')
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight')
-    plt.close()
+    img_string = ''
+    if sum(counts) > 0:
+        # Plot bar graph
+        _, ax = plt.subplots(figsize=(6,4))
+        bars = plt.barh(names, counts)
+        ax.bar_label(bars, label_type='edge', padding=5)
+        plt.xlabel('Contribs')
+        plt.ylabel('Devs')
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight')
+        plt.close()
 
-    # Encode image data to base64 string
-    buf.seek(0) # Rewind buffer back to start
-    img_bytes = base64.b64encode(buf.getvalue())
-    buf.close()
-    img_string = img_bytes.decode('utf-8')
+        # Encode image data to base64 string
+        buf.seek(0) # Rewind buffer back to start
+        img_bytes = base64.b64encode(buf.getvalue())
+        buf.close()
+        img_string = img_bytes.decode('utf-8')
 
     tbl: list[str] = []
     for username, total_count in reversed(entries):
@@ -331,9 +337,12 @@ html_tail = '''
         document.getElementById('tab-'+newTab).classList.add('active');
 
         document.getElementById('tbl-'+current).classList.add('hidden');
-        document.getElementById('img-'+current).classList.add('hidden');
         document.getElementById('tbl-'+newTab).classList.remove('hidden');
-        document.getElementById('img-'+newTab).classList.remove('hidden');
+        let currImg = document.getElementById('img-'+current);
+        let newImg  = document.getElementById('img-'+newTab);
+        if(currImg){ currImg.classList.add('hidden'); }
+        if (newImg){ newImg.classList.remove('hidden'); }
+
         current = newTab;
     }
 </script>
@@ -355,7 +364,7 @@ table_template = '''
     </thead>
     <tbody>{Table}</tbody>
 </table>
-<img id="img-{Name}" class="{Class}" src="data:image/png;base64,{Img}" />
+{Img}
 '''
 
 if __name__ == '__main__':
