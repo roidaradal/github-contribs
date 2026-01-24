@@ -5,6 +5,7 @@ import calendar, os, sys
 import io, base64
 import requests, webbrowser
 import matplotlib.pyplot as plt 
+from pathlib import Path, PurePath
 from datetime import date, datetime
 from bs4 import BeautifulSoup
 
@@ -47,7 +48,8 @@ def main():
         'Body'      : body,
         'Selected'  : selected,     
     }
-    create_output(reps)
+    filename = get_filename(user_date, input_path)
+    create_output(reps, filename)
 
 def get_args() -> tuple[date, str]:
     '''Returns the chosen date (default: today) and input_path (default: ./devs.txt)'''
@@ -61,9 +63,15 @@ def get_args() -> tuple[date, str]:
             input_path = arg.split('=')[1]
     return user_date, input_path
 
-def get_usernames(path: str) -> list[str]:
+def get_filename(d: date, path: str) -> str:
+    '''Create output filename'''
+    name = PurePath(path).stem
+    return '%d%.2d_%s.html' % (d.year, d.month, name)
+
+def get_usernames(file_path: str) -> list[str]:
     '''Load list of usernames from path (default: devs.txt)'''
-    if not os.path.exists(path):
+    path = Path(file_path)
+    if not path.exists():
         print(f'Error: path `{path}` does not exist')
         sys.exit(1)
     
@@ -243,18 +251,22 @@ def create_table_image(contribs: dict[str, Contribs], days: list[int]) -> tuple[
         tbl.append('</tr>')
     return '\n'.join(tbl), img_string
 
-def create_output(reps: dict[str, str]):
+def create_output(reps: dict[str, str], filename: str):
     '''Create output HTML file, replace template placeholders, save HTML file and open in browser'''
     body = html_body.format(**reps)
     html = html_head + body + html_tail
     
+    # Output dir = ~/.contribs
+    outDir = Path.home().joinpath(OUT_DIR)
+    if not outDir.exists(): os.mkdir(outDir)
+    
     # Write html to file
-    path = 'out.html' # Temporary while testing, TODO: replace path 
+    path = outDir.joinpath(filename)
     with open(path, 'w') as f:
         f.write(html)
     
     # Open html in browser
-    url = 'file://' + os.path.abspath(path)
+    url = path.absolute().as_uri()
     webbrowser.open_new_tab(url)
 
 html_head = '''
@@ -372,8 +384,6 @@ if __name__ == '__main__':
 
 '''
 TODO:
-[ ] Save html to ~/.contribs/
-    - if not os.path.exists(outDir): os.mkdir(outDir)
 [ ] Save contribution results to file in ~/.contribs 
 [ ] Load contributions from cached file
 [ ] Convert bar graph to HTML color gradients
