@@ -2,7 +2,7 @@
 # John Roy Daradal 
 
 import calendar, os, sys
-import io, base64
+import io, base64, json
 import requests, webbrowser
 import matplotlib.pyplot as plt 
 from pathlib import Path, PurePath
@@ -15,7 +15,7 @@ API_URL : str = 'https://api.github.com/users/%s/events/public'
 OUT_DIR : str = '.contribs'
 
 IntPair = tuple[int,int]
-Contribs = dict[int, IntPair]
+Contribs = dict[str, IntPair]
 
 color_reset = '\033[0m'
 green   = lambda text: '\033[32m%s%s' % (text, color_reset)
@@ -24,23 +24,45 @@ cyan    = lambda text: '\033[36m%s%s' % (text, color_reset)
 
 def main():
     '''Main function'''
-    user_date, input_path = get_args()
+
+    # Output dir = ~/.contribs
+    outDir = Path.home().joinpath(OUT_DIR)
+    if not outDir.exists(): os.mkdir(outDir)
+
+    # Get config (user_date, input_path)
+    user_date, input_path, cached = get_args()
+    filename = get_filename(user_date, input_path)
     month = user_date.strftime('%B %Y')
     weeks = get_month_weeks(user_date)
     week_index = get_week_of(user_date, weeks)
 
-    usernames = get_usernames(input_path)
-    max_length = max(len(cyan(uname)) for uname in usernames)
-    template = '• %%-%ds\t\t%%3d' % max_length
-
-    print('Fetching %s GitHub contributions from %s...' % (green(month), yellow(f'`{input_path}`')))
+    # Setup paths 
+    json_path = outDir.joinpath(f'{filename}.json')
+    html_path = outDir.joinpath(f'{filename}.html')
 
     contribs: dict[str, Contribs] = {}
-    for username in usernames:
-        contribs[username] = fetch_user_month_contributions(username, user_date)
-        total = sum(count for (count,_) in contribs[username].values())
-        print(template % (cyan(username), total))
+    if cached and json_path.exists():
+        # Load from cache
+        with open(json_path, 'r') as f:
+            contribs = json.load(f)
+    else:
+        # Get usernames
+        usernames = get_usernames(input_path)
+        max_length = max(len(cyan(uname)) for uname in usernames)
+        template = '• %%-%ds\t\t%%3d' % max_length
 
+        # Fetch contributions
+        print('Fetching %s GitHub contributions from %s...' % (green(month), yellow(f'`{input_path}`')))
+        for username in usernames:
+            contribs[username] = fetch_user_month_contributions(username, user_date)
+            total = sum(count for (count,_) in contribs[username].values())
+            print(template % (cyan(username), total))
+
+        # Save contribs to JSON file (cache)
+        with open(json_path, 'w') as f:
+            json.dump(contribs, f)
+
+    # Create output HTML
     body, selected = create_body(contribs, weeks, week_index, month)
     reps: dict[str, str] = {
         'Title'     : f'{month} GitHub Contributions',
@@ -48,25 +70,28 @@ def main():
         'Body'      : body,
         'Selected'  : selected,     
     }
-    filename = get_filename(user_date, input_path)
-    create_output(reps, filename)
+    create_output(reps, html_path)
 
-def get_args() -> tuple[date, str]:
+def get_args() -> tuple[date, str, bool]:
     '''Returns the chosen date (default: today) and input_path (default: ./devs.txt)'''
     user_date = date.today()
-    input_path = 'devs.txt' 
+    input_path = 'devs.txt'
+    cached = False
     for arg in sys.argv[1:]:
+        arg = arg.lower()
         if arg.startswith('date='):
             value = arg.split('=')[1]
             user_date = new_date(value)
         elif arg.startswith('input='):
             input_path = arg.split('=')[1]
-    return user_date, input_path
+        elif arg == 'cache':
+            cached = True
+    return user_date, input_path, cached
 
 def get_filename(d: date, path: str) -> str:
     '''Create output filename'''
     name = PurePath(path).stem
-    return '%d%.2d_%s.html' % (d.year, d.month, name)
+    return '%d%.2d_%s' % (d.year, d.month, name)
 
 def get_usernames(file_path: str) -> list[str]:
     '''Load list of usernames from path (default: devs.txt)'''
@@ -166,7 +191,7 @@ def fetch_user_month_contributions(username: str, d: date) -> Contribs:
         count_text = text.strip().split()[0]
         count = 0 if count_text == 'No' else int(count_text)
         level = int(str(cell['data-level']))
-        contribs[day] = (count, level)
+        contribs[str(day)] = (count, level)
     return contribs
 
 def create_sidebar(weeks: list[list[int]], selected: int) -> str:
@@ -212,7 +237,7 @@ def create_table_image(contribs: dict[str, Contribs], days: list[int]) -> tuple[
     total: dict[str, int] = {}
     count_levels: dict[str, list[IntPair]] = {}
     for username, user_contribs in contribs.items():
-        row: list[IntPair] = [user_contribs.get(day, (0,-1)) for day in days]
+        row: list[IntPair] = [user_contribs.get(str(day), (0,-1)) for day in days]
         total[username] = sum(count for (count,_) in row)
         count_levels[username] = row
     
@@ -251,17 +276,13 @@ def create_table_image(contribs: dict[str, Contribs], days: list[int]) -> tuple[
         tbl.append('</tr>')
     return '\n'.join(tbl), img_string
 
-def create_output(reps: dict[str, str], filename: str):
+def create_output(reps: dict[str, str], path: Path):
     '''Create output HTML file, replace template placeholders, save HTML file and open in browser'''
     body = html_body.format(**reps)
     html = html_head + body + html_tail
     
-    # Output dir = ~/.contribs
-    outDir = Path.home().joinpath(OUT_DIR)
-    if not outDir.exists(): os.mkdir(outDir)
     
     # Write html to file
-    path = outDir.joinpath(filename)
     with open(path, 'w') as f:
         f.write(html)
     
@@ -384,8 +405,6 @@ if __name__ == '__main__':
 
 '''
 TODO:
-[ ] Save contribution results to file in ~/.contribs 
-[ ] Load contributions from cached file
 [ ] Convert bar graph to HTML color gradients
     - Remove matplotlib dependency 
 [ ] Monthly Report
