@@ -40,10 +40,12 @@ def main():
         total = sum(count for (count,_) in contribs[username].values())
         print(template % (cyan(username), total))
 
+    body, selected = create_body(contribs, weeks, week_index, month)
     reps: dict[str, str] = {
-        'Title':    f'{month} GitHub Contributions',
-        'Sidebar':  create_sidebar(weeks, week_index),
-        'Body':     create_body(contribs, weeks, week_index, month),
+        'Title'     : f'{month} GitHub Contributions',
+        'Sidebar'   : create_sidebar(weeks, week_index),
+        'Body'      : body,
+        'Selected'  : selected,     
     }
     create_output(reps)
 
@@ -166,27 +168,32 @@ def create_sidebar(weeks: list[list[int]], selected: int) -> str:
         if week == 0 and sum(days) == 0: continue # skip if no week0
 
         active = "active" if selected == week else ""
-        sidebar.append(f'<div class="tab {active}" id="tab-week{week}">Week {week}</div>')
+        sidebar.append(f'<div class="tab {active}" id="tab-{week}" onclick="changeTab(\'{week}\')">Week {week}</div>')
     
     return '\n'.join(sidebar)
 
-def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected: int, month: str) -> str:
+def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected: int, month: str) -> tuple[str, str]:
     '''Create body content'''
     body: list[str] = []
+    selected_week = ''
     for week, days in enumerate(weeks):
         if week == 0 and sum(days) == 0: continue # skip if no week0
-
-        title = '%.2d - %.2d %s' % (min([d for d in days if d > 0]), max(days), month)
+        week_start = min([d for d in days if d > 0])
+        week_end = max(days)
+        title = '%.2d - %.2d %s' % (week_start, week_end, month)
+        name = str(week)
         tbl, img = create_table_image(contribs, days)
         reps: dict[str, str] = {
             'Class' : 'hidden' if selected != week else '',
             'Title' : title,
             'Table' : tbl,
             'Img'   : img,
+            'Name'  : name,
         }
         table = table_template.format(**reps)
         body.append(table)
-    return '\n'.join(body)
+        if selected == week: selected_week = name
+    return '\n'.join(body), selected_week
 
 def create_table_image(contribs: dict[str, Contribs], days: list[int]) -> tuple[str, str]:
     '''Create table body for one week'''
@@ -233,7 +240,7 @@ def create_table_image(contribs: dict[str, Contribs], days: list[int]) -> tuple[
 def create_output(reps: dict[str, str]):
     '''Create output HTML file, replace template placeholders, save HTML file and open in browser'''
     body = html_body.format(**reps)
-    html = html_head + body
+    html = html_head + body + html_tail
     
     # Write html to file
     path = 'out.html' # Temporary while testing, TODO: replace path 
@@ -314,12 +321,28 @@ html_body = '''
     <h1>{Title}</h1>
     {Body}
 </div>
+<script>
+    var current = '{Selected}';
+'''
+
+html_tail = '''
+    function changeTab(newTab) {
+        document.getElementById('tab-'+current).classList.remove('active');
+        document.getElementById('tab-'+newTab).classList.add('active');
+
+        document.getElementById('tbl-'+current).classList.add('hidden');
+        document.getElementById('img-'+current).classList.add('hidden');
+        document.getElementById('tbl-'+newTab).classList.remove('hidden');
+        document.getElementById('img-'+newTab).classList.remove('hidden');
+        current = newTab;
+    }
+</script>
 </body>
 </html>
 '''
 
 table_template = '''
-<table class="{Class}">
+<table class="{Class}" id="tbl-{Name}">
     <thead>
         <tr>
             <th colspan="9">{Title}</th>
@@ -332,7 +355,7 @@ table_template = '''
     </thead>
     <tbody>{Table}</tbody>
 </table>
-<img class="{Class}" src="data:image/png;base64,{Img}" />
+<img id="img-{Name}" class="{Class}" src="data:image/png;base64,{Img}" />
 '''
 
 if __name__ == '__main__':
@@ -340,7 +363,6 @@ if __name__ == '__main__':
 
 '''
 TODO:
-[ ] Tab Selector 
 [ ] Save html to ~/.contribs/
     - if not os.path.exists(outDir): os.mkdir(outDir)
 [ ] Save contribution results to file in ~/.contribs 
