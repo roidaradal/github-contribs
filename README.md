@@ -8,7 +8,7 @@ Prepare a text file which contains the list of GitHub usernames (default: `devs.
 Run:
 
 ```bash
-python github.py (date=yyyy-mm-dd) (input=devs.txt) 
+python github.py (date=yyyy-mm-dd) (input=devs.txt) (from=cache) (with=weekend)
 ```
 
 This will look at the users' GitHub pages, and generate a report of their contributions for the month.
@@ -16,6 +16,8 @@ This will look at the users' GitHub pages, and generate a report of their contri
 ## Options
 * `date=yyyy-mm-dd` - used to generate a monthly report for a custom month (default: current month)
 * `input=devs.txt` - used to set a different input file path (default: `devs.txt`)
+* `from=cache` - used to load data from cache (if available)
+* `with=weekend` - includes weekends in the report
 
 ## Dependencies
 * [`requests`](https://pypi.org/project/requests/) - for making HTTP requests

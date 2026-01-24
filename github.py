@@ -9,13 +9,20 @@ from pathlib import Path, PurePath
 from datetime import date, datetime
 from bs4 import BeautifulSoup
 
-LIMIT: int = 10
+LIMIT: int = 9
 HTML_URL: str = 'https://github.com/users/%s/contributions?from=%s' # (username, start_date)
 API_URL : str = 'https://api.github.com/users/%s/events/public'
 OUT_DIR : str = '.contribs'
 
 IntPair = tuple[int,int]
 Contribs = dict[str, IntPair]
+
+class Config:
+    def __init__(self):
+        self.date: date = date.today()
+        self.path: str = 'devs.txt'
+        self.cached: bool = False 
+        self.weekends: bool = False
 
 color_reset = '\033[0m'
 green   = lambda text: '\033[32m%s%s' % (text, color_reset)
@@ -30,31 +37,32 @@ def main():
     if not outDir.exists(): os.mkdir(outDir)
 
     # Get config (user_date, input_path)
-    user_date, input_path, cached = get_args()
-    filename = get_filename(user_date, input_path)
-    month = user_date.strftime('%B %Y')
-    weeks = get_month_weeks(user_date)
-    week_index = get_week_of(user_date, weeks)
+    cfg = get_config()
+    filename = get_filename(cfg.date, cfg.path)
+    month = cfg.date.strftime('%B %Y')
+    weeks = get_month_weeks(cfg.date)
+    week_index = get_week_of(cfg.date, weeks)
 
     # Setup paths 
     json_path = outDir.joinpath(f'{filename}.json')
     html_path = outDir.joinpath(f'{filename}.html')
 
+    # Get contributions (from cache or by requesting)
     contribs: dict[str, Contribs] = {}
-    if cached and json_path.exists():
+    if cfg.cached and json_path.exists():
         # Load from cache
         with open(json_path, 'r') as f:
             contribs = json.load(f)
     else:
         # Get usernames
-        usernames = get_usernames(input_path)
+        usernames = get_usernames(cfg.path)
         max_length = max(len(cyan(uname)) for uname in usernames)
         template = '• %%-%ds\t\t%%3d' % max_length
 
         # Fetch contributions
-        print('Fetching %s GitHub contributions from %s...' % (green(month), yellow(f'`{input_path}`')))
+        print('Fetching %s GitHub contributions from %s...' % (green(month), yellow(f'`{cfg.path}`')))
         for username in usernames:
-            contribs[username] = fetch_user_month_contributions(username, user_date)
+            contribs[username] = fetch_user_month_contributions(username, cfg.date)
             total = sum(count for (count,_) in contribs[username].values())
             print(template % (cyan(username), total))
 
@@ -63,7 +71,7 @@ def main():
             json.dump(contribs, f)
 
     # Create output HTML
-    body, selected = create_body(contribs, weeks, week_index, month)
+    body, selected = create_body(contribs, weeks, week_index, month, cfg.weekends)
     reps: dict[str, str] = {
         'Title'     : f'{month} GitHub Contributions',
         'Sidebar'   : create_sidebar(weeks, week_index),
@@ -72,21 +80,21 @@ def main():
     }
     create_output(reps, html_path)
 
-def get_args() -> tuple[date, str, bool]:
+def get_config() -> Config:
     '''Returns the chosen date (default: today) and input_path (default: ./devs.txt)'''
-    user_date = date.today()
-    input_path = 'devs.txt'
-    cached = False
+    cfg = Config()
     for arg in sys.argv[1:]:
         arg = arg.lower()
         if arg.startswith('date='):
             value = arg.split('=')[1]
-            user_date = new_date(value)
+            cfg.date = new_date(value)
         elif arg.startswith('input='):
-            input_path = arg.split('=')[1]
-        elif arg == 'cache':
-            cached = True
-    return user_date, input_path, cached
+            cfg.path = arg.split('=')[1]
+        elif arg.startswith('from='):
+            cfg.cached = arg.split('=')[1] == 'cache'
+        elif arg.startswith('with='):
+            cfg.weekends = arg.split('=')[1] in ('weekend', 'weekends')
+    return cfg
 
 def get_filename(d: date, path: str) -> str:
     '''Create output filename'''
@@ -205,7 +213,7 @@ def create_sidebar(weeks: list[list[int]], selected: int) -> str:
     
     return '\n'.join(sidebar)
 
-def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected: int, month: str) -> tuple[str, str]:
+def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected: int, month: str, weekends: bool) -> tuple[str, str]:
     '''Create body content'''
     body: list[str] = []
     selected_week = ''
@@ -216,28 +224,31 @@ def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected:
         title = '%.2d - %.2d %s' % (week_start, week_end, month)
         name = str(week)
         class_name = 'hidden' if selected != week else ''
-        tbl, img = create_table_image(contribs, days)
+        tbl, img = create_table_image(contribs, days, weekends)
         if img != '':
             img = f'<img id="img-{name}" class="{class_name}" src="data:image/png;base64,{img}" />'
         
         reps: dict[str, str] = {
-            'Class' : class_name,
-            'Title' : title,
-            'Table' : tbl,
-            'Img'   : img,
-            'Name'  : name,
+            'Class'     : class_name,
+            'Title'     : title,
+            'Table'     : tbl,
+            'Img'       : img,
+            'Name'      : name,
+            'Span'      : '9' if weekends else '7',
+            'Weekend'   : '<th>Sat</th><th>Sun</th>' if weekends else '',
         }
         table = table_template.format(**reps)
         body.append(table)
         if selected == week: selected_week = name
     return '\n'.join(body), selected_week
 
-def create_table_image(contribs: dict[str, Contribs], days: list[int]) -> tuple[str, str]:
+def create_table_image(contribs: dict[str, Contribs], days: list[int], weekends: bool) -> tuple[str, str]:
     '''Create table body for one week'''
+    limit = 7 if weekends else 5
     total: dict[str, int] = {}
     count_levels: dict[str, list[IntPair]] = {}
     for username, user_contribs in contribs.items():
-        row: list[IntPair] = [user_contribs.get(str(day), (0,-1)) for day in days]
+        row: list[IntPair] = [user_contribs.get(str(day), (0,-1)) for day in days[:limit]]
         total[username] = sum(count for (count,_) in row)
         count_levels[username] = row
     
@@ -280,7 +291,6 @@ def create_output(reps: dict[str, str], path: Path):
     '''Create output HTML file, replace template placeholders, save HTML file and open in browser'''
     body = html_body.format(**reps)
     html = html_head + body + html_tail
-    
     
     # Write html to file
     with open(path, 'w') as f:
@@ -387,12 +397,12 @@ table_template = '''
 <table class="{Class}" id="tbl-{Name}">
     <thead>
         <tr>
-            <th colspan="9">{Title}</th>
+            <th colspan="{Span}">{Title}</th>
         </tr>
         <tr>
             <th>Dev</th><th>Mon</th><th>Tue</th>
             <th>Wed</th><th>Thu</th><th>Fri</th>
-            <th>Sat</th><th>Sun</th><th>Total</th>
+            {Weekend}<th>Total</th>
         </tr>
     </thead>
     <tbody>{Table}</tbody>
@@ -406,10 +416,9 @@ if __name__ == '__main__':
 '''
 TODO:
 [ ] Convert bar graph to HTML color gradients
-    - Remove matplotlib dependency 
-[ ] Monthly Report
-    - Flag to toggle weekend contribution counts => should recompute totals and reorder list 
-[ ] Summary Tab 
+[ ] Weekend flag to include weekend (default: weekdays only)
+[ ] Summary Tab  
+    - 3-column grid
     - Display Github month calendar per user 
     - Add pace for month, year (e.g. on pace for X contributions by end of month/year)
     - Line graph of Daily contributions for month
