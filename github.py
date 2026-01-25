@@ -2,9 +2,7 @@
 # John Roy Daradal 
 
 import calendar, os, sys
-import io, base64, json
-import requests, webbrowser
-import matplotlib.pyplot as plt 
+import json, requests, webbrowser
 from pathlib import Path, PurePath
 from datetime import date, datetime
 from bs4 import BeautifulSoup
@@ -224,17 +222,14 @@ def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected:
         title = '%.2d - %.2d %s' % (week_start, week_end, month)
         name = str(week)
         class_name = 'hidden' if selected != week else ''
-        tbl, img = create_table_image(contribs, days, weekends)
-        if img != '':
-            img = f'<img id="img-{name}" class="{class_name}" src="data:image/png;base64,{img}" />'
+        tbl = create_table(contribs, days, weekends)
         
         reps: dict[str, str] = {
             'Class'     : class_name,
             'Title'     : title,
             'Table'     : tbl,
-            'Img'       : img,
             'Name'      : name,
-            'Span'      : '9' if weekends else '7',
+            'Span'      : '10' if weekends else '8',
             'Weekend'   : '<th>Sat</th><th>Sun</th>' if weekends else '',
         }
         table = table_template.format(**reps)
@@ -242,7 +237,7 @@ def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected:
         if selected == week: selected_week = name
     return '\n'.join(body), selected_week
 
-def create_table_image(contribs: dict[str, Contribs], days: list[int], weekends: bool) -> tuple[str, str]:
+def create_table(contribs: dict[str, Contribs], days: list[int], weekends: bool) -> str:
     '''Create table body for one week'''
     limit = 7 if weekends else 5
     total: dict[str, int] = {}
@@ -253,28 +248,10 @@ def create_table_image(contribs: dict[str, Contribs], days: list[int], weekends:
         count_levels[username] = row
     
     entries= sorted(total.items(), key=lambda x: x[1])
-    names: list[str] = [x[0] for x in entries]
-    counts: list[int] = [x[1] for x in entries]
-
-    img_string = ''
-    if sum(counts) > 0:
-        # Plot bar graph
-        _, ax = plt.subplots(figsize=(6,4))
-        bars = plt.barh(names, counts)
-        ax.bar_label(bars, label_type='edge', padding=5)
-        plt.xlabel('Contribs')
-        plt.ylabel('Devs')
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', bbox_inches='tight')
-        plt.close()
-
-        # Encode image data to base64 string
-        buf.seek(0) # Rewind buffer back to start
-        img_bytes = base64.b64encode(buf.getvalue())
-        buf.close()
-        img_string = img_bytes.decode('utf-8')
 
     tbl: list[str] = []
+    max_count = max(count for _, count in entries)
+    bar_class = 'bar' if max_count > 0 else ''
     for username, total_count in reversed(entries):
         tbl.append('<tr>')
         tbl.append(f'<td class="left">{username}</td>')
@@ -284,8 +261,13 @@ def create_table_image(contribs: dict[str, Contribs], days: list[int], weekends:
             else:
                 tbl.append(f'<td class="bold center level{level}">{count}</td>')
         tbl.append(f'<td class="bold right">{total_count}</td>')
+        width = '0'
+        if max_count > 0:
+            width = '%.2f' % ((total_count * 100.0) / max_count)
+        bar = f'<div style="width:{width}%">&nbsp;</div>' if max_count > 0 else ''
+        tbl.append(f'<td class="{bar_class}">{bar}</td>')
         tbl.append('</tr>')
-    return '\n'.join(tbl), img_string
+    return '\n'.join(tbl)
 
 def create_output(reps: dict[str, str], path: Path):
     '''Create output HTML file, replace template placeholders, save HTML file and open in browser'''
@@ -327,6 +309,13 @@ html_head = '''
         td.right { text-align: right; }
         td.center { text-align: center; }
         td.bold { font-weight: bold; }
+        td.bar { 
+            min-width: 300px;
+        }
+        td.bar div {
+            background-color: navy;
+            height: 100%;
+        }
         div { margin: 0; padding: 0 }
         #sidebar {
             position: absolute;
@@ -402,12 +391,11 @@ table_template = '''
         <tr>
             <th>Dev</th><th>Mon</th><th>Tue</th>
             <th>Wed</th><th>Thu</th><th>Fri</th>
-            {Weekend}<th>Total</th>
+            {Weekend}<th colspan="2">Total</th>
         </tr>
     </thead>
     <tbody>{Table}</tbody>
 </table>
-{Img}
 '''
 
 if __name__ == '__main__':
@@ -415,16 +403,15 @@ if __name__ == '__main__':
 
 '''
 TODO:
-[ ] Convert bar graph to HTML color gradients
-[ ] Weekend flag to include weekend (default: weekdays only)
 [ ] Summary Tab  
     - 3-column grid
     - Display Github month calendar per user 
     - Add pace for month, year (e.g. on pace for X contributions by end of month/year)
     - Line graph of Daily contributions for month
     - Line graph of Weekly contributions for month
-[ ] Use Github API for public events 
-[ ] Check what using an API key unlocks in terms of organization
-[ ] Measure weight of activity (e.g. create repo = 1, commit with 2 lines of change vs 100 updates)
+[ ] Improve metrics:
+    - Use Github API for public events 
+    - Check if using API key improves results (e.g. organizations)
+    - Measure activity weight (create repo=1, commit with 2 line updates vs 100 updates)
 [ ] Convert to webapp
 '''
