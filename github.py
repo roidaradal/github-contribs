@@ -22,7 +22,9 @@ class Config:
         self.path: str = 'devs.txt'
         self.cached: bool = False 
         self.weekends: bool = False
-        self.pace: bool = True
+        self.is_current_month: bool = True
+        self.today: int = 0
+        self.month_days: int = 0
 
 color_reset = '\033[0m'
 green   = lambda text: '\033[32m%s%s' % (text, color_reset)
@@ -42,6 +44,10 @@ def main():
     month = cfg.date.strftime('%B %Y')
     weeks = get_month_weeks(cfg.date)
     week_index = get_week_of(cfg.date, weeks)
+    
+    cfg.today = date.today().day 
+    cfg.month_days = calendar.monthrange(cfg.date.year, cfg.date.month)[1]
+    cfg.is_current_month = is_current_month(cfg.date)
 
     # Setup paths 
     json_path = outDir.joinpath(f'{filename}.json')
@@ -62,7 +68,7 @@ def main():
         # Fetch contributions
         print('Fetching %s GitHub contributions from %s...' % (green(month), yellow(f'`{cfg.path}`')))
         for username in usernames:
-            contribs[username] = fetch_user_month_contributions(username, cfg.date)
+            contribs[username] = fetch_user_month_contributions(username, cfg)
             total = sum(count for (count,_) in contribs[username].values())
             print(template % (cyan(username), total))
 
@@ -71,11 +77,10 @@ def main():
             json.dump(contribs, f)
 
     # Create output HTML
-    cfg.pace = is_current_month(cfg.date)
     body, selected = create_body(contribs, weeks, week_index, month, cfg)
     reps: dict[str, str] = {
         'Title'     : f'{month} GitHub Contributions',
-        'Sidebar'   : create_sidebar(weeks, week_index),
+        'Sidebar'   : create_sidebar(weeks, week_index, cfg),
         'Body'      : body,
         'Selected'  : selected,     
     }
@@ -168,14 +173,15 @@ def new_date(date_string: str) -> date:
     except:
         return date.today()
     
-def fetch_user_month_contributions(username: str, d: date) -> Contribs:
+def fetch_user_month_contributions(username: str, cfg: Config) -> Contribs:
     '''Return dict{day => (count, level)} contributions of username for given month'''
+    d = cfg.date
     # Start GitHub page from January 1 of given year 
     year_start = date(d.year, 1, 1)
     url = HTML_URL % (username, str(year_start))
     
     # Setup the month date range
-    last_month_day = calendar.monthrange(d.year, d.month)[1]
+    last_month_day = cfg.month_days
     month_start = str(date(d.year, d.month, 1))
     month_end   = str(date(d.year, d.month, last_month_day))
 
@@ -203,7 +209,7 @@ def fetch_user_month_contributions(username: str, d: date) -> Contribs:
         contribs[str(day)] = (count, level)
     return contribs
 
-def create_sidebar(weeks: list[list[int]], selected: int) -> str:
+def create_sidebar(weeks: list[list[int]], selected: int, cfg: Config) -> str:
     '''Create sidebar content'''
     sidebar: list[str] = [
         '<div class="tab" id="tab-all" onclick="changeTab(\'all\')">Summary</div>'
@@ -214,6 +220,9 @@ def create_sidebar(weeks: list[list[int]], selected: int) -> str:
         active = "active" if selected == week else ""
         sidebar.append(f'<div class="tab {active}" id="tab-{week}" onclick="changeTab(\'{week}\')">Week {week}</div>')
     
+    if cfg.is_current_month:
+        days_left = (cfg.month_days+1) - cfg.today
+        sidebar.append(f'<p class="center" style="margin-top:3em">{days_left} days left</p>')
     return '\n'.join(sidebar)
 
 def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected: int, month: str, cfg: Config) -> tuple[str, str]:
@@ -260,8 +269,6 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
     summary.append('<div id="tbl-all" class="hidden" style="max-width:950px;">')
 
     totals, ranks = compute_weekly_totals_ranks(contribs, weeks, cfg.weekends)
-    today = date.today().day 
-    month_days = calendar.monthrange(cfg.date.year, cfg.date.month)[1]
 
     entries = [(k, sum(v)) for k,v in totals.items()]
     for username, total_count in sorted(entries, key=lambda x: (-x[1], x[0])):
@@ -273,7 +280,7 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
         summary.append('</tr><tr><th>Rank</th>')
         for rank in ranks[username]: summary.append(f'<td class="center">{rank}</td>')
         summary.append('</tr></tbody></table>')
-        if cfg.pace: summary.append(create_pace(contribs[username], today, month_days))
+        if cfg.is_current_month: summary.append(create_pace(contribs[username], cfg))
         summary.append('</div>')
     summary.append('</div>')
     return '\n'.join(summary)
@@ -327,10 +334,10 @@ def compute_ranks(total: list[tuple[str,int]]) -> dict[int,str]:
         rank += freq[count]
     return rankOf
 
-def create_pace(contribs: Contribs, today: int, month_days: int) -> str:
-    total = sum(contribs[str(day)][0] for day in range(1,today+1)) * 1.0
-    avg = total / today
-    est = avg * month_days
+def create_pace(contribs: Contribs, cfg: Config) -> str:
+    total = sum(contribs[str(day)][0] for day in range(1, cfg.today+1)) * 1.0
+    avg = total / cfg.today
+    est = avg * cfg.month_days
     pace: list[str] = [
         '<p class="left" style="margin-left: 1em">'
         'Average: <b>%.1f</b> daily contribs<br/>' % avg, 
@@ -411,6 +418,7 @@ html_head = '''
             border-right: 1px solid black;
             border-bottom: 1px solid black;
         }
+        th.today  { background-color: yellow; }
         td.level0 { background-color: #151b23; color: #151b23; }
         td.level1 { background-color: #033a16; color: white;   }
         td.level2 { background-color: #196c2e; }
@@ -418,7 +426,7 @@ html_head = '''
         td.level4 { background-color: #56d364; }
         td.left, p.left { text-align: left; }
         td.right { text-align: right; }
-        td.center { text-align: center; }
+        td.center, p.center { text-align: center; }
         td.bold { font-weight: bold; }
         td.bar { 
             min-width: 300px;
@@ -468,11 +476,12 @@ html_head = '''
             margin: 5px;
         }
         div.grid-cell label {
-            margin-left: 1em;
+            font-weight: bold;
         }
         div.grid-cell table {
             table-layout: fixed;
             width: 90%;
+            font-size: 0.8em;
             margin-top: 5px;
         }
         div.grid-cell table th {
@@ -480,8 +489,12 @@ html_head = '''
         }
         p.month-count {
             font-weight: bold;
-            font-size: 1.75em;
-            margin: 5px;
+            font-size: 1.5em;
+            margin: 5px auto;
+            background: chartreuse;
+            width: 50px;
+            border-radius: 25px;
+            padding: 5px;
         }
     </style>
 </head>
@@ -535,6 +548,7 @@ table_template = '''
 
 if __name__ == '__main__':
     main()
+
 '''
 TODO:
 [ ] Summary Tab  
@@ -542,9 +556,6 @@ TODO:
     - Display Github month calendar per user 
     - Line graph of Daily contributions for month
     - Line graph of Weekly contributions for month
-    - Remove with=weekend flag, replace with Weekend toggle
-        - Create two versions of the body, togglable with Weekend checkbox
-        - Adjust ids of tab selectors and tables/divs, add version indicator
 [ ] Year Scope
     - Add monthly reports (similar to monthly summary)
     - Add monthly contribs calendar
@@ -554,4 +565,8 @@ TODO:
     - Check if using API key improves results (e.g. organizations)
     - Measure activity weight (create repo=1, commit with 2 line updates vs 100 updates)
 [ ] Convert to webapp
+    - Fetch profile picture link
+    - Remove with=weekend flag, replace with Weekend toggle
+        - Create two versions of the body, togglable with Weekend checkbox
+        - Adjust ids of tab selectors and tables/divs, add version indicator
 '''
