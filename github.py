@@ -221,22 +221,30 @@ def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected:
     body.append(create_summary(contribs, weeks, weekends))
 
     selected_week = ''
+    limit = 7 if weekends else 5
     for week, days in enumerate(weeks):
         if week == 0 and sum(days) == 0: continue # skip if no week0
-        week_start = min([d for d in days if d > 0])
-        week_end = max(days)
+        week_start = min([d for d in days[:limit] if d > 0])
+        week_end = max(days[:limit])
         title = '%.2d - %.2d %s' % (week_start, week_end, month)
         name = str(week)
         class_name = 'hidden' if selected != week else ''
         tbl = create_table(contribs, days, weekends)
-        
+
+        dates: list[str] = ['%.2d' % d if d > 0 else '&nbsp;' for d in days]
+        mon, tue, wed, thu, fri, sat, sun = dates
         reps: dict[str, str] = {
             'Class'     : class_name,
             'Title'     : title,
             'Table'     : tbl,
             'Name'      : name,
             'Span'      : '10' if weekends else '8',
-            'Weekend'   : '<th>Sat</th><th>Sun</th>' if weekends else '',
+            'Weekend'   : f'<th>Sat<br/>{sat}</th><th>Sun<br/>{sun}</th>' if weekends else '',
+            'Mon'       : mon, 
+            'Tue'       : tue, 
+            'Wed'       : wed, 
+            'Thu'       : thu, 
+            'Fri'       : fri,
         }
         table = table_template.format(**reps)
         body.append(table)
@@ -467,8 +475,12 @@ table_template = '''
             <th colspan="{Span}">{Title}</th>
         </tr>
         <tr>
-            <th>Dev</th><th>Mon</th><th>Tue</th>
-            <th>Wed</th><th>Thu</th><th>Fri</th>
+            <th>Dev</th>
+            <th>Mon<br/>{Mon}</th>
+            <th>Tue<br/>{Tue}</th>
+            <th>Wed<br/>{Wed}</th>
+            <th>Thu<br/>{Thu}</th>
+            <th>Fri<br/>{Fri}</th>
             {Weekend}<th colspan="2">Total</th>
         </tr>
     </thead>
@@ -482,9 +494,6 @@ if __name__ == '__main__':
 '''
 TODO:
 [ ] Summary Tab  
-    - Add days to weekly tables
-    - Adjust the date range title if no weekends
-
     - Improve rankings on ties
     - Ranking is '-' if 0 count
     - Add pace for month (Avg Commits Per Day, On Pace for X at end of month)
