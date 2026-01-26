@@ -22,6 +22,7 @@ class Config:
         self.path: str = 'devs.txt'
         self.cached: bool = False 
         self.weekends: bool = False
+        self.pace: bool = True
 
 color_reset = '\033[0m'
 green   = lambda text: '\033[32m%s%s' % (text, color_reset)
@@ -70,7 +71,8 @@ def main():
             json.dump(contribs, f)
 
     # Create output HTML
-    body, selected = create_body(contribs, weeks, week_index, month, cfg.weekends)
+    cfg.pace = is_current_month(cfg.date)
+    body, selected = create_body(contribs, weeks, week_index, month, cfg)
     reps: dict[str, str] = {
         'Title'     : f'{month} GitHub Contributions',
         'Sidebar'   : create_sidebar(weeks, week_index),
@@ -214,15 +216,15 @@ def create_sidebar(weeks: list[list[int]], selected: int) -> str:
     
     return '\n'.join(sidebar)
 
-def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected: int, month: str, weekends: bool) -> tuple[str, str]:
+def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected: int, month: str, cfg: Config) -> tuple[str, str]:
     '''Create body content'''
     body: list[str] = []
 
     # Create summary tab 
-    body.append(create_summary(contribs, weeks, weekends))
+    body.append(create_summary(contribs, weeks, cfg))
 
     selected_week = ''
-    limit = 7 if weekends else 5
+    limit = 7 if cfg.weekends else 5
     for week, days in enumerate(weeks):
         if week == 0 and sum(days) == 0: continue # skip if no week0
         week_start = min([d for d in days[:limit] if d > 0])
@@ -230,7 +232,7 @@ def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected:
         title = '%.2d - %.2d %s' % (week_start, week_end, month)
         name = str(week)
         class_name = 'hidden' if selected != week else ''
-        tbl = create_table(contribs, days, weekends)
+        tbl = create_table(contribs, days, cfg.weekends)
 
         dates: list[str] = ['%.2d' % d if d > 0 else '&nbsp;' for d in days]
         mon, tue, wed, thu, fri, sat, sun = dates
@@ -239,8 +241,8 @@ def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected:
             'Title'     : title,
             'Table'     : tbl,
             'Name'      : name,
-            'Span'      : '10' if weekends else '8',
-            'Weekend'   : f'<th>Sat<br/>{sat}</th><th>Sun<br/>{sun}</th>' if weekends else '',
+            'Span'      : '10' if cfg.weekends else '8',
+            'Weekend'   : f'<th>Sat<br/>{sat}</th><th>Sun<br/>{sun}</th>' if cfg.weekends else '',
             'Mon'       : mon, 
             'Tue'       : tue, 
             'Wed'       : wed, 
@@ -252,12 +254,14 @@ def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected:
         if selected == week: selected_week = name
     return '\n'.join(body), selected_week
 
-def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], weekends: bool) -> str:
+def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: Config) -> str:
     '''Create contents of the summary tab'''
     summary: list[str] = []
     summary.append('<div id="tbl-all" class="hidden" style="max-width:950px;">')
 
-    totals, ranks = compute_weekly_totals_ranks(contribs, weeks, weekends)
+    totals, ranks = compute_weekly_totals_ranks(contribs, weeks, cfg.weekends)
+    today = date.today().day 
+    month_days = calendar.monthrange(cfg.date.year, cfg.date.month)[1]
 
     entries = [(k, sum(v)) for k,v in totals.items()]
     for username, total_count in sorted(entries, key=lambda x: (-x[1], x[0])):
@@ -269,6 +273,7 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], weeken
         summary.append('</tr><tr><th>Rank</th>')
         for rank in ranks[username]: summary.append(f'<td class="center">{rank}</td>')
         summary.append('</tr></tbody></table>')
+        if cfg.pace: summary.append(create_pace(contribs[username], today, month_days))
         summary.append('</div>')
     summary.append('</div>')
     return '\n'.join(summary)
@@ -322,6 +327,18 @@ def compute_ranks(total: list[tuple[str,int]]) -> dict[int,str]:
         rank += freq[count]
     return rankOf
 
+def create_pace(contribs: Contribs, today: int, month_days: int) -> str:
+    total = sum(contribs[str(day)][0] for day in range(1,today+1)) * 1.0
+    avg = total / today
+    est = avg * month_days
+    pace: list[str] = [
+        '<p class="left" style="margin-left: 1em">'
+        'Average: <b>%.1f</b> daily contribs<br/>' % avg, 
+        'On Pace: <b>%.0f</b> month contribs' % est,
+        '</p>'
+    ]
+    return '\n'.join(pace)
+
 def create_table(contribs: dict[str, Contribs], days: list[int], weekends: bool) -> str:
     '''Create table body for one week'''
     limit = 7 if weekends else 5
@@ -332,12 +349,12 @@ def create_table(contribs: dict[str, Contribs], days: list[int], weekends: bool)
         total[username] = sum(count for (count,_) in row)
         count_levels[username] = row
     
-    entries= sorted(total.items(), key=lambda x: x[1])
+    entries= sorted(total.items(), key=lambda x: (-x[1], x[0].lower()))
 
     tbl: list[str] = []
     max_count = max(count for _, count in entries)
     bar_class = 'bar' if max_count > 0 else ''
-    for username, total_count in reversed(entries):
+    for username, total_count in entries:
         tbl.append('<tr>')
         tbl.append(f'<td class="left">{username}</td>')
         for count, level in count_levels[username]:
@@ -367,12 +384,21 @@ def create_output(reps: dict[str, str], path: Path):
     url = path.absolute().as_uri()
     webbrowser.open_new_tab(url)
 
+def is_current_month(d: date) -> bool:
+    '''Check if given date is in current month'''
+    today = date.today()
+    return d.year == today.year and d.month == today.month
+
 html_head = '''
 <!DOCTYPE html>
 <html>
 <head>
     <title>GitHub Contributions</title>
     <style>
+        h1 {
+            font-size: 1.5em;
+            margin: 10px 0;
+        }
         table {
             border-top: 1px solid black;
             border-left: 1px solid black;
@@ -390,7 +416,7 @@ html_head = '''
         td.level2 { background-color: #196c2e; }
         td.level3 { background-color: #2ea043; }
         td.level4 { background-color: #56d364; }
-        td.left { text-align: left; }
+        td.left, p.left { text-align: left; }
         td.right { text-align: right; }
         td.center { text-align: center; }
         td.bold { font-weight: bold; }
@@ -454,7 +480,7 @@ html_head = '''
         }
         p.month-count {
             font-weight: bold;
-            font-size: 2em;
+            font-size: 1.75em;
             margin: 5px;
         }
     </style>
@@ -512,10 +538,6 @@ if __name__ == '__main__':
 '''
 TODO:
 [ ] Summary Tab  
-    - Improve rankings on ties
-    - Ranking is '-' if 0 count
-
-    - Add pace for month (Avg Commits Per Day, On Pace for X at end of month)
     - Summary subtabs
     - Display Github month calendar per user 
     - Line graph of Daily contributions for month
