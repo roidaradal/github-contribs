@@ -218,7 +218,7 @@ def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected:
     body: list[str] = []
 
     # Create summary tab 
-    body.append(create_summary(contribs, weeks))
+    body.append(create_summary(contribs, weeks, weekends))
 
     selected_week = ''
     for week, days in enumerate(weeks):
@@ -243,17 +243,57 @@ def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected:
         if selected == week: selected_week = name
     return '\n'.join(body), selected_week
 
-def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]]) -> str:
+def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], weekends: bool) -> str:
+    '''Create contents of the summary tab'''
     summary: list[str] = []
     summary.append('<div id="tbl-all" class="hidden" style="max-width:950px;">')
-    entries = [(k, sum(p[0] for p in v.values())) for k,v in contribs.items()]
+
+    totals, ranks = compute_weekly_totals_ranks(contribs, weeks, weekends)
+
+    entries = [(k, sum(v)) for k,v in totals.items()]
     for username, total_count in sorted(entries, key=lambda x: (-x[1], x[0])):
         summary.append('<div class="grid-cell">')
         summary.append(f'<label>{username}</label>')
         summary.append(f'<p class="month-count">{total_count}</p>')
+        summary.append(f'<table><tbody><tr><th>Count</th>')
+        for count in totals[username]: summary.append(f'<td class="center">{count}</td>')
+        summary.append('</tr><tr><th>Rank</th>')
+        for rank in ranks[username]: summary.append(f'<td class="center">{rank}</td>')
+        summary.append('</tr></tbody></table>')
         summary.append('</div>')
     summary.append('</div>')
     return '\n'.join(summary)
+
+def compute_weekly_totals_ranks(contribs: dict[str, Contribs], weeks: list[list[int]], weekends: bool) -> tuple[dict[str, list[int]], dict[str, list[int]]]:
+    '''Compute the weekly totals and rankings of each user'''
+    totals: dict[str, list[int]] = {}
+    ranks : dict[str, list[int]] = {}
+    limit = 7 if weekends else 5
+    num_weeks = len(weeks)
+
+    for username in contribs:
+        totals[username] = [0] * num_weeks 
+        ranks[username]  = [0] * num_weeks
+
+    for i, days in enumerate(weeks):
+        if sum(days) == 0: continue 
+        total: list[tuple[str,int]] = []
+        for username, user_contribs in contribs.items():
+            user_total = sum(user_contribs.get(str(day), (0,-1))[0] for day in days[:limit])
+            totals[username][i] = user_total
+            total.append((username, user_total))
+        total.sort(key=lambda x: (-x[1], x[0].lower()))
+        for j, (username, _) in enumerate(total):
+            ranks[username][i] = j+1
+
+    if sum(weeks[0]) == 0:
+        # Remove first item if no week 0
+        for username in contribs:
+            totals[username] = totals[username][1:]
+            ranks[username]  = ranks[username][1:]
+
+
+    return totals, ranks
 
 def create_table(contribs: dict[str, Contribs], days: list[int], weekends: bool) -> str:
     '''Create table body for one week'''
@@ -377,6 +417,14 @@ html_head = '''
         div.grid-cell label {
             margin-left: 1em;
         }
+        div.grid-cell table {
+            table-layout: fixed;
+            width: 90%;
+            margin-top: 5px;
+        }
+        div.grid-cell table th {
+            width: 30%;
+        }
         p.month-count {
             font-weight: bold;
             font-size: 2em;
@@ -434,9 +482,11 @@ if __name__ == '__main__':
 '''
 TODO:
 [ ] Summary Tab  
-    - Display weekly totals
-    - Display weekly rankings below totals
+    - Add days to weekly tables
+    - Adjust the date range title if no weekends
 
+    - Improve rankings on ties
+    - Ranking is '-' if 0 count
     - Add pace for month (Avg Commits Per Day, On Pace for X at end of month)
     - Summary subtabs
     - Display Github month calendar per user 
