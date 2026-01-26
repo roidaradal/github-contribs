@@ -202,7 +202,9 @@ def fetch_user_month_contributions(username: str, d: date) -> Contribs:
 
 def create_sidebar(weeks: list[list[int]], selected: int) -> str:
     '''Create sidebar content'''
-    sidebar: list[str] = []
+    sidebar: list[str] = [
+        '<div class="tab" id="tab-all" onclick="changeTab(\'all\')">Summary</div>'
+    ]
     for week, days in enumerate(weeks):
         if week == 0 and sum(days) == 0: continue # skip if no week0
 
@@ -214,6 +216,10 @@ def create_sidebar(weeks: list[list[int]], selected: int) -> str:
 def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected: int, month: str, weekends: bool) -> tuple[str, str]:
     '''Create body content'''
     body: list[str] = []
+
+    # Create summary tab 
+    body.append(create_summary(contribs, weeks))
+
     selected_week = ''
     for week, days in enumerate(weeks):
         if week == 0 and sum(days) == 0: continue # skip if no week0
@@ -236,6 +242,16 @@ def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected:
         body.append(table)
         if selected == week: selected_week = name
     return '\n'.join(body), selected_week
+
+def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]]) -> str:
+    summary: list[str] = []
+    summary.append('<div id="tbl-all" class="hidden" style="max-width:950px;">')
+    for username in sorted(contribs.keys(), key= lambda x: x.lower()):
+        summary.append('<div class="grid-cell">')
+        summary.append(f'<p>{username}</p>')
+        summary.append('</div>')
+    summary.append('</div>')
+    return '\n'.join(summary)
 
 def create_table(contribs: dict[str, Contribs], days: list[int], weekends: bool) -> str:
     '''Create table body for one week'''
@@ -348,6 +364,13 @@ html_head = '''
         .hidden {
             display: none !important;
         }
+        div.grid-cell {
+            border: 1px solid black;
+            float: left; 
+            width: 300px;
+            max-width: 30%;
+            margin: 5px;
+        }
     </style>
 </head>
 ''' 
@@ -370,10 +393,6 @@ html_tail = '''
 
         document.getElementById('tbl-'+current).classList.add('hidden');
         document.getElementById('tbl-'+newTab).classList.remove('hidden');
-        let currImg = document.getElementById('img-'+current);
-        let newImg  = document.getElementById('img-'+newTab);
-        if(currImg){ currImg.classList.add('hidden'); }
-        if (newImg){ newImg.classList.remove('hidden'); }
 
         current = newTab;
     }
@@ -404,7 +423,6 @@ if __name__ == '__main__':
 '''
 TODO:
 [ ] Summary Tab  
-    - 3-column grid
     - Display Github month calendar per user 
     - Add pace for month, year (e.g. on pace for X contributions by end of month/year)
     - Line graph of Daily contributions for month
