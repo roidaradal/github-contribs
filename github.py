@@ -3,6 +3,7 @@
 
 import calendar, os, sys
 import json, requests, webbrowser
+from collections import defaultdict
 from pathlib import Path, PurePath
 from datetime import date, datetime
 from bs4 import BeautifulSoup
@@ -272,16 +273,16 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], weeken
     summary.append('</div>')
     return '\n'.join(summary)
 
-def compute_weekly_totals_ranks(contribs: dict[str, Contribs], weeks: list[list[int]], weekends: bool) -> tuple[dict[str, list[int]], dict[str, list[int]]]:
+def compute_weekly_totals_ranks(contribs: dict[str, Contribs], weeks: list[list[int]], weekends: bool) -> tuple[dict[str, list[int]], dict[str, list[str]]]:
     '''Compute the weekly totals and rankings of each user'''
     totals: dict[str, list[int]] = {}
-    ranks : dict[str, list[int]] = {}
+    ranks : dict[str, list[str]] = {}
     limit = 7 if weekends else 5
     num_weeks = len(weeks)
 
     for username in contribs:
         totals[username] = [0] * num_weeks 
-        ranks[username]  = [0] * num_weeks
+        ranks[username]  = ['-'] * num_weeks
 
     for i, days in enumerate(weeks):
         if sum(days) == 0: continue 
@@ -290,9 +291,9 @@ def compute_weekly_totals_ranks(contribs: dict[str, Contribs], weeks: list[list[
             user_total = sum(user_contribs.get(str(day), (0,-1))[0] for day in days[:limit])
             totals[username][i] = user_total
             total.append((username, user_total))
-        total.sort(key=lambda x: (-x[1], x[0].lower()))
-        for j, (username, _) in enumerate(total):
-            ranks[username][i] = j+1
+        rankOf = compute_ranks(total)
+        for username, count in total:
+            ranks[username][i] = rankOf[count]
 
     if sum(weeks[0]) == 0:
         # Remove first item if no week 0
@@ -300,8 +301,26 @@ def compute_weekly_totals_ranks(contribs: dict[str, Contribs], weeks: list[list[
             totals[username] = totals[username][1:]
             ranks[username]  = ranks[username][1:]
 
-
     return totals, ranks
+
+def compute_ranks(total: list[tuple[str,int]]) -> dict[int,str]:
+    '''Compute the ranks of the count values'''
+    total.sort(key=lambda x: (-x[1], x[0].lower()))
+    freq: dict[int, int] = defaultdict(int) # frequency of each value 
+    for (_, count) in total:
+        freq[count] += 1
+    
+    rankOf: dict[int, str] = {}
+    rank = 1 
+    for count in sorted(freq.keys(), reverse=True):
+        if count == 0:
+            rankOf[count] = '-'
+        elif freq[count] == 1:
+            rankOf[count] = str(rank)
+        else:
+            rankOf[count] = f'T-{rank}'
+        rank += freq[count]
+    return rankOf
 
 def create_table(contribs: dict[str, Contribs], days: list[int], weekends: bool) -> str:
     '''Create table body for one week'''
@@ -490,17 +509,20 @@ table_template = '''
 
 if __name__ == '__main__':
     main()
-
 '''
 TODO:
 [ ] Summary Tab  
     - Improve rankings on ties
     - Ranking is '-' if 0 count
+
     - Add pace for month (Avg Commits Per Day, On Pace for X at end of month)
     - Summary subtabs
     - Display Github month calendar per user 
     - Line graph of Daily contributions for month
     - Line graph of Weekly contributions for month
+    - Remove with=weekend flag, replace with Weekend toggle
+        - Create two versions of the body, togglable with Weekend checkbox
+        - Adjust ids of tab selectors and tables/divs, add version indicator
 [ ] Year Scope
     - Add monthly reports (similar to monthly summary)
     - Add monthly contribs calendar
