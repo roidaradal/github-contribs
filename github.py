@@ -246,9 +246,11 @@ def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected:
 def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]]) -> str:
     summary: list[str] = []
     summary.append('<div id="tbl-all" class="hidden" style="max-width:950px;">')
-    for username in sorted(contribs.keys(), key= lambda x: x.lower()):
+    entries = [(k, sum(p[0] for p in v.values())) for k,v in contribs.items()]
+    for username, total_count in sorted(entries, key=lambda x: (-x[1], x[0])):
         summary.append('<div class="grid-cell">')
-        summary.append(f'<p>{username}</p>')
+        summary.append(f'<label>{username}</label>')
+        summary.append(f'<p class="month-count">{total_count}</p>')
         summary.append('</div>')
     summary.append('</div>')
     return '\n'.join(summary)
@@ -366,9 +368,18 @@ html_head = '''
         }
         div.grid-cell {
             border: 1px solid black;
+            text-align: center;
             float: left; 
             width: 300px;
             max-width: 30%;
+            margin: 5px;
+        }
+        div.grid-cell label {
+            margin-left: 1em;
+        }
+        p.month-count {
+            font-weight: bold;
+            font-size: 2em;
             margin: 5px;
         }
     </style>
@@ -423,10 +434,18 @@ if __name__ == '__main__':
 '''
 TODO:
 [ ] Summary Tab  
+    - Display weekly totals
+    - Display weekly rankings below totals
+
+    - Add pace for month (Avg Commits Per Day, On Pace for X at end of month)
+    - Summary subtabs
     - Display Github month calendar per user 
-    - Add pace for month, year (e.g. on pace for X contributions by end of month/year)
     - Line graph of Daily contributions for month
     - Line graph of Weekly contributions for month
+[ ] Year Scope
+    - Add monthly reports (similar to monthly summary)
+    - Add monthly contribs calendar
+    - Add pace for year 
 [ ] Improve metrics:
     - Use Github API for public events 
     - Check if using API key improves results (e.g. organizations)
