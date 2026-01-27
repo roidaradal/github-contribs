@@ -274,13 +274,18 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
     for username, total_count in sorted(entries, key=lambda x: (-x[1], x[0])):
         summary.append('<div class="grid-cell">')
         summary.append(f'<label>{username}</label>')
-        summary.append(f'<p class="month-count">{total_count}</p>')
+        if cfg.is_current_month:
+            avg, pace = get_current_stats(contribs[username], cfg)
+            summary.append(create_current_stats(total_count, avg, pace))
+        else:
+            avg, count = get_past_stats(contribs[username], cfg)
+            summary.append(create_past_stats(total_count, avg, count))
+
         summary.append(f'<table><tbody><tr><th>Count</th>')
         for count in totals[username]: summary.append(f'<td class="center">{count}</td>')
         summary.append('</tr><tr><th>Rank</th>')
         for rank in ranks[username]: summary.append(f'<td class="center">{rank}</td>')
         summary.append('</tr></tbody></table>')
-        if cfg.is_current_month: summary.append(create_pace(contribs[username], cfg))
         summary.append('</div>')
     summary.append('</div>')
     return '\n'.join(summary)
@@ -334,17 +339,43 @@ def compute_ranks(total: list[tuple[str,int]]) -> dict[int,str]:
         rank += freq[count]
     return rankOf
 
-def create_pace(contribs: Contribs, cfg: Config) -> str:
+def get_past_stats(contribs: Contribs, cfg: Config) -> tuple[float, int]:
+    '''Get the average commits per day for a past month'''
+    total = sum(p[0] for p in contribs.values()) * 1.0
+    avg = total / cfg.month_days 
+    count = sum(1 for p in contribs.values() if p[0] > 0) # count number of active days
+    return avg, count
+
+def get_current_stats(contribs: Contribs, cfg: Config) -> tuple[float, float]:
+    '''Get the average commits per day and the estimated number of commits at month end'''
     total = sum(contribs[str(day)][0] for day in range(1, cfg.today+1)) * 1.0
     avg = total / cfg.today
     est = avg * cfg.month_days
-    pace: list[str] = [
-        '<p class="left" style="margin-left: 1em">'
-        'Average: <b>%.1f</b> daily contribs<br/>' % avg, 
-        'On Pace: <b>%.0f</b> month contribs' % est,
-        '</p>'
-    ]
-    return '\n'.join(pace)
+    return avg, est
+
+def create_current_stats(total_count: int, avg: float, pace: float) -> str:
+    '''Create table for current month stats (average, total, pace)'''
+    stats: list[str] = []
+    stats.append('<table class="stats"><tr>')
+    stats.append('<th class="floor">%.1f</th>' % avg)
+    stats.append(f'<th><p class="month-count">{total_count}</p></th>')
+    stats.append('<th class="floor">%.0f</th>' % pace)
+    stats.append('</tr><tr>')
+    stats.append('<td class="small">Daily Avg</td><th>TOTAL</th><td class="small">On Pace</td>')
+    stats.append('</tr></table>')
+    return '\n'.join(stats)
+
+def create_past_stats(total_count: int, avg: float, days_active: int) -> str:
+    '''Create table for past month stats (average, total, days active)'''
+    stats: list[str] = []
+    stats.append('<table class="stats"><tr>')
+    stats.append('<th class="floor">%.1f</th>' % avg)
+    stats.append(f'<th><p class="month-count">{total_count}</p></th>')
+    stats.append('<th class="floor">%d</th>' % days_active)
+    stats.append('</tr><tr>')
+    stats.append('<td class="small">Daily Avg</td><th>TOTAL</th><td class="small">Active Days</td>')
+    stats.append('</tr></table>')
+    return '\n'.join(stats)
 
 def create_table(contribs: dict[str, Contribs], days: list[int], weekends: bool) -> str:
     '''Create table body for one week'''
@@ -418,6 +449,10 @@ html_head = '''
             border-right: 1px solid black;
             border-bottom: 1px solid black;
         }
+        table.stats { border: none; }
+        table.stats th, table.stats td { border: none; padding: 1px; }
+        table.stats th.floor { vertical-align: bottom; font-size: 1.15em; }
+        table.stats td.small { font-size: 0.8em; }
         th.today  { background-color: yellow; }
         td.level0 { background-color: #151b23; color: #151b23; }
         td.level1 { background-color: #033a16; color: white;   }
@@ -481,7 +516,6 @@ html_head = '''
         div.grid-cell table {
             table-layout: fixed;
             width: 90%;
-            font-size: 0.8em;
             margin-top: 5px;
         }
         div.grid-cell table th {
@@ -553,9 +587,9 @@ if __name__ == '__main__':
 TODO:
 [ ] Summary Tab  
     - Summary subtabs
+    - Line graph of Weekly contributions for month
     - Display Github month calendar per user 
     - Line graph of Daily contributions for month
-    - Line graph of Weekly contributions for month
 [ ] Year Scope
     - Add monthly reports (similar to monthly summary)
     - Add monthly contribs calendar
