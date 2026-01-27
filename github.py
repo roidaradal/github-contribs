@@ -272,9 +272,9 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
     summary.append('<div id="tbl-all" class="hidden" style="max-width:950px;">')
 
     summary.append('<div id="subtab-selector" style="clear:both;">')
-    summary.append('<button id="btn-stats"    onclick="changeSubTab(\'stats\')">Stats</button>')
+    summary.append('<button id="btn-stats"    onclick="changeSubTab(\'stats\')" class="active">Stats</button>')
     summary.append('<button id="btn-graph"    onclick="changeSubTab(\'graph\')">Graph</button>')
-    summary.append('<button id="btn-calendar" onclick="changeSubTab(\'calendar\')" class="active">Calendar</button>')
+    summary.append('<button id="btn-calendar" onclick="changeSubTab(\'calendar\')">Calendar</button>')
     summary.append('</div>')
     
     week_numbers = list(range(0, len(weeks)))
@@ -289,7 +289,7 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
         summary.append(f'<label>{username}</label>')
 
         # Stats Subtab 
-        summary.append('<div class="hidden subtab-stats">')
+        summary.append('<div class="subtab-stats">')
         if cfg.is_current_month:
             avg, pace = get_current_stats(contribs[username], cfg)
             summary.append(create_current_stats(total_count, avg, pace))
@@ -310,7 +310,7 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
         summary.append('</div>')
 
         # Calendar Subtab 
-        summary.append('<div class="subtab-calendar">')
+        summary.append('<div class="hidden subtab-calendar">')
         summary.append(create_calendar(contribs[username], weeks, prefix))
         summary.append('</div>')
 
@@ -597,7 +597,7 @@ html_body = '''
 </div>
 <script>
     var currTab = '{Selected}';
-    var currSubTab = 'calendar';
+    var currSubTab = 'stats';
 '''
 
 html_tail = '''
