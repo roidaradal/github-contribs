@@ -279,6 +279,7 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
     
     week_numbers = list(range(0, len(weeks)))
     if not cfg.has_week0: week_numbers = week_numbers[1:]
+    prefix = cfg.date.strftime('%Y-%m-')
 
     summary.append('<div id="grid-container">')
     totals, ranks = compute_weekly_totals_ranks(contribs, weeks, cfg.weekends)
@@ -310,28 +311,32 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
 
         # Calendar Subtab 
         summary.append('<div class="subtab-calendar">')
-        summary.append(create_calendar(contribs[username], weeks))
+        summary.append(create_calendar(contribs[username], weeks, prefix))
         summary.append('</div>')
 
         summary.append('</div>')
     summary.append('</div></div>')
     return '\n'.join(summary)
 
-def create_calendar(contribs: Contribs, weeks: list[list[int]]) -> str:
+def create_calendar(contribs: Contribs, weeks: list[list[int]], prefix: str) -> str:
     '''Create monthly calendar'''
     html: list[str] = ['<table class="calendar"><tbody>']
     html.append('<tr>')
-    for day in 'MTWTFSS': html.append(f'<td class="small">{day}</td>')
+    days = 'Mon Tue Wed Thu Fri Sat Sun'.split()
+    for i, day in enumerate('MTWTFSS'): 
+        html.append(f'<td title="{days[i]}" class="small">{day}</td>')
     html.append('</tr>')
+
     for days in weeks:
-        if sum(days) == 0: continue 
+        if sum(days) == 0: continue # Skip empty week 0
         html.append('<tr>')
         for day in days:
             if day == 0:
                 html.append('<td>&nbsp;</td>')
             else:
-                level = contribs[str(day)][1]
-                html.append(f'<td class="level{level}">&nbsp;</td>')
+                date = '%s%.2d' % (prefix, day)
+                count, level = contribs[str(day)]
+                html.append(f'<td title="{count} contributions on {date}" class="level{level}">&nbsp;</td>')
         html.append('</tr>')
 
     html.append('</tbody></table>')
@@ -525,6 +530,7 @@ html_head = '''
             padding: 5px; 
             border-right: 1px solid black; border-bottom: 1px solid black;
         }
+        table.calendar td:hover { cursor: pointer; }
         table.calendar { margin: 0.5em auto; }
         table.calendar td { padding: 0; width: 1em; }
         table.stats { border: none; }
