@@ -272,9 +272,9 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
     summary.append('<div id="tbl-all" class="hidden" style="max-width:950px;">')
 
     summary.append('<div id="subtab-selector" style="clear:both;">')
-    summary.append('<button id="btn-stats" onclick="changeSubTab(\'stats\')">Stats</button>')
-    summary.append('<button id="btn-graph" class="active" onclick="changeSubTab(\'graph\')">Graph</button>')
-    summary.append('<button id="btn-calendar" onclick="changeSubTab(\'calendar\')">Calendar</button>')
+    summary.append('<button id="btn-stats"    onclick="changeSubTab(\'stats\')">Stats</button>')
+    summary.append('<button id="btn-graph"    onclick="changeSubTab(\'graph\')">Graph</button>')
+    summary.append('<button id="btn-calendar" onclick="changeSubTab(\'calendar\')" class="active">Calendar</button>')
     summary.append('</div>')
     
     week_numbers = list(range(0, len(weeks)))
@@ -303,19 +303,39 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
         summary.append('</div>')
 
         # Graph Subtab
-        summary.append('<div class="subtab-graph">')
+        summary.append('<div class="hidden subtab-graph">')
         summary.append(create_weekly_bar_graph(week_numbers, totals[username]))
         summary.append(create_daily_line_graph(contribs[username], cfg))
         summary.append('</div>')
 
         # Calendar Subtab 
-        summary.append('<div class="hidden subtab-calendar">')
-        summary.append(f'<p>Calendar for {username}</p>')
+        summary.append('<div class="subtab-calendar">')
+        summary.append(create_calendar(contribs[username], weeks))
         summary.append('</div>')
 
         summary.append('</div>')
     summary.append('</div></div>')
     return '\n'.join(summary)
+
+def create_calendar(contribs: Contribs, weeks: list[list[int]]) -> str:
+    '''Create monthly calendar'''
+    html: list[str] = ['<table class="calendar"><tbody>']
+    html.append('<tr>')
+    for day in 'MTWTFSS': html.append(f'<td class="small">{day}</td>')
+    html.append('</tr>')
+    for days in weeks:
+        if sum(days) == 0: continue 
+        html.append('<tr>')
+        for day in days:
+            if day == 0:
+                html.append('<td>&nbsp;</td>')
+            else:
+                level = contribs[str(day)][1]
+                html.append(f'<td class="level{level}">&nbsp;</td>')
+        html.append('</tr>')
+
+    html.append('</tbody></table>')
+    return '\n'.join(html)
 
 def create_weekly_bar_graph(weeks: list[int], totals: list[int]) -> str:
     '''Create weekly totals bar graph'''
@@ -341,7 +361,7 @@ def create_daily_line_graph(contribs: Contribs, cfg: Config) -> str:
     return create_image()
 
 def create_image() -> str:
-    '''Create image tag'''
+    '''Create image tag from base64 encoded plot of matplotlib'''
     buf = io.BytesIO()
     plt.savefig(buf, format='png', bbox_inches='tight')
     plt.close()
@@ -505,11 +525,12 @@ html_head = '''
             padding: 5px; 
             border-right: 1px solid black; border-bottom: 1px solid black;
         }
-        table.ranks { font-size: 0.75em; }
+        table.calendar { margin: 0.5em auto; }
+        table.calendar td { padding: 0; width: 1em; }
         table.stats { border: none; }
         table.stats th, table.stats td { border: none; padding: 1px; }
         table.stats th.floor { vertical-align: bottom; font-size: 1.15em; }
-        table.stats td.small { font-size: 0.8em; }
+        td.small { font-size: 0.8em; }
         th.today  { background-color: yellow; }
         td.level0 { background-color: #151b23; color: #151b23; }
         td.level1 { background-color: #033a16; color: white;   }
@@ -543,7 +564,8 @@ html_head = '''
             width: 100%; margin: 5px;
         }
         div.grid-cell label { font-weight: bold; }
-        div.grid-cell table { table-layout: fixed; width: 90%; margin-top: 5px; }
+        div.grid-cell div.subtab-stats table { table-layout: fixed; width: 90%; margin-top: 5px; }
+        table.ranks { font-size: 0.75em; }
         div.grid-cell table th { width: 30%; }
         p.month-count {
             font-weight: bold; font-size: 1.5em; background: chartreuse;
@@ -569,7 +591,7 @@ html_body = '''
 </div>
 <script>
     var currTab = '{Selected}';
-    var currSubTab = 'graph';
+    var currSubTab = 'calendar';
 '''
 
 html_tail = '''
@@ -628,8 +650,6 @@ if __name__ == '__main__':
 
 '''
 TODO:
-[ ] Summary Tab  
-    - Display Github month calendar per user 
 [ ] Year Scope
     - Add monthly reports (similar to monthly summary)
     - Add monthly contribs calendar
