@@ -276,10 +276,11 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
     summary.append('<button id="btn-graph" class="active" onclick="changeSubTab(\'graph\')">Graph</button>')
     summary.append('<button id="btn-calendar" onclick="changeSubTab(\'calendar\')">Calendar</button>')
     summary.append('</div>')
-
+    
     week_numbers = list(range(0, len(weeks)))
     if not cfg.has_week0: week_numbers = week_numbers[1:]
 
+    summary.append('<div id="grid-container">')
     totals, ranks = compute_weekly_totals_ranks(contribs, weeks, cfg.weekends)
     entries = [(k, sum(v)) for k,v in totals.items()]
     for username, total_count in sorted(entries, key=lambda x: (-x[1], x[0])):
@@ -294,7 +295,7 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
         else:
             avg, count = get_past_stats(contribs[username], cfg)
             summary.append(create_past_stats(total_count, avg, count))
-        summary.append(f'<table><tbody><tr><th>Count</th>')
+        summary.append(f'<table class="ranks"><tbody><tr><th>Count</th>')
         for count in totals[username]: summary.append(f'<td class="center">{count}</td>')
         summary.append('</tr><tr><th>Rank</th>')
         for rank in ranks[username]: summary.append(f'<td class="center">{rank}</td>')
@@ -304,6 +305,7 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
         # Graph Subtab
         summary.append('<div class="subtab-graph">')
         summary.append(create_weekly_bar_graph(week_numbers, totals[username]))
+        summary.append(create_daily_line_graph(contribs[username], cfg))
         summary.append('</div>')
 
         # Calendar Subtab 
@@ -312,14 +314,34 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
         summary.append('</div>')
 
         summary.append('</div>')
-    summary.append('</div>')
+    summary.append('</div></div>')
     return '\n'.join(summary)
 
 def create_weekly_bar_graph(weeks: list[int], totals: list[int]) -> str:
-    plt.subplots(figsize=(3, 2))
+    '''Create weekly totals bar graph'''
+    _, ax = plt.subplots(figsize=(3, 2))
+    if sum(totals) == 0: ax.set_ylim(bottom=0, top=5)
     plt.xticks(weeks)
     plt.xlabel('Week')
-    plt.bar(weeks, totals)
+    plt.bar(weeks, totals, color='green')
+    
+    return create_image()
+
+def create_daily_line_graph(contribs: Contribs, cfg: Config) -> str:
+    '''Create daily contribs line graph'''
+    days = list(range(1, cfg.month_days+1))
+    totals = [contribs[str(d)][0] for d in days]
+
+    _, ax = plt.subplots(figsize=(3,2))
+    if sum(totals) == 0: ax.set_ylim(bottom=0, top=5)
+    ax.set_xlim(left=0, right=cfg.month_days+1)
+    plt.xlabel('Day')
+    plt.plot(days, totals, color='green')
+
+    return create_image()
+
+def create_image() -> str:
+    '''Create image tag'''
     buf = io.BytesIO()
     plt.savefig(buf, format='png', bbox_inches='tight')
     plt.close()
@@ -328,8 +350,8 @@ def create_weekly_bar_graph(weeks: list[int], totals: list[int]) -> str:
     img_bytes = base64.b64encode(buf.getvalue())
     buf.close()
     img_data = img_bytes.decode('utf-8')
-    img = f'<img src="data:image/png;base64,{img_data}" />'
-    return img
+
+    return f'<img src="data:image/png;base64,{img_data}" />'
 
 def compute_weekly_totals_ranks(contribs: dict[str, Contribs], weeks: list[list[int]], weekends: bool) -> tuple[dict[str, list[int]], dict[str, list[str]]]:
     '''Compute the weekly totals and rankings of each user'''
@@ -476,13 +498,14 @@ html_head = '''
     <style>
         h1 { font-size: 1.5em; margin: 10px 0; }
         table {
-            border-top: 1px solid black; border-left: 1px solid black; border-collapse: collapse;
-            margin: 1em; float: left;
+            border-top: 1px solid black; border-left: 1px solid black; 
+            border-collapse: collapse; margin: 1em;
         }
         th, td {
             padding: 5px; 
             border-right: 1px solid black; border-bottom: 1px solid black;
         }
+        table.ranks { font-size: 0.75em; }
         table.stats { border: none; }
         table.stats th, table.stats td { border: none; padding: 1px; }
         table.stats th.floor { vertical-align: bottom; font-size: 1.15em; }
@@ -498,7 +521,7 @@ html_head = '''
         td.center, p.center { text-align: center; }
         td.bold { font-weight: bold; }
         td.bar {  min-width: 300px; }
-        td.bar div { background-color: navy; height: 100%; }
+        td.bar div { background-color: green; height: 100%; }
         div { margin: 0; padding: 0 }
         #sidebar {
             position: absolute; top: 0%; left: 0%;
@@ -516,8 +539,8 @@ html_head = '''
         div.tab.active, button.active { background-color: chartreuse; font-weight: bold; }
         .hidden { display: none !important; }
         div.grid-cell {
-            border: 1px solid black; text-align: center; float: left; 
-            width: 300px; max-width: 30%; margin: 5px;
+            border: 1px solid black; text-align: center;
+            width: 100%; margin: 5px;
         }
         div.grid-cell label { font-weight: bold; }
         div.grid-cell table { table-layout: fixed; width: 90%; margin-top: 5px; }
@@ -527,7 +550,12 @@ html_head = '''
             width: 50px; margin: 5px auto; padding: 5px; border-radius: 25px;
         }
         #subtab-selector button { width: 100px; margin-right: 1em; margin-bottom: 10px; }
-        div.subtab-graph img { width: 50%; float: left; }
+        div.subtab-graph img { width: 49%; margin: 0; padding: 0; }
+        #grid-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
     </style>
 </head>
 ''' 
@@ -601,7 +629,6 @@ if __name__ == '__main__':
 '''
 TODO:
 [ ] Summary Tab  
-    - Line graph of Daily contributions for month
     - Display Github month calendar per user 
 [ ] Year Scope
     - Add monthly reports (similar to monthly summary)
