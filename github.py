@@ -268,12 +268,20 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
     summary: list[str] = []
     summary.append('<div id="tbl-all" class="hidden" style="max-width:950px;">')
 
-    totals, ranks = compute_weekly_totals_ranks(contribs, weeks, cfg.weekends)
+    summary.append('<div id="subtab-selector" style="clear:both;">')
+    summary.append('<button id="btn-stats" class="active" onclick="changeSubTab(\'stats\')">Stats</button>')
+    summary.append('<button id="btn-graph" onclick="changeSubTab(\'graph\')">Graph</button>')
+    summary.append('<button id="btn-calendar" onclick="changeSubTab(\'calendar\')">Calendar</button>')
+    summary.append('</div>')
 
+    totals, ranks = compute_weekly_totals_ranks(contribs, weeks, cfg.weekends)
     entries = [(k, sum(v)) for k,v in totals.items()]
     for username, total_count in sorted(entries, key=lambda x: (-x[1], x[0])):
         summary.append('<div class="grid-cell">')
         summary.append(f'<label>{username}</label>')
+
+        # Stats Subtab 
+        summary.append('<div class="subtab-stats">')
         if cfg.is_current_month:
             avg, pace = get_current_stats(contribs[username], cfg)
             summary.append(create_current_stats(total_count, avg, pace))
@@ -286,6 +294,18 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
         summary.append('</tr><tr><th>Rank</th>')
         for rank in ranks[username]: summary.append(f'<td class="center">{rank}</td>')
         summary.append('</tr></tbody></table>')
+        summary.append('</div>')
+
+        # Graph Subtab
+        summary.append('<div class="hidden subtab-graph">')
+        summary.append(f'<p>Graph for {username}</p>')
+        summary.append('</div>')
+
+        # Calendar Subtab 
+        summary.append('<div class="hidden subtab-calendar">')
+        summary.append(f'<p>Calendar for {username}</p>')
+        summary.append('</div>')
+
         summary.append('</div>')
     summary.append('</div>')
     return '\n'.join(summary)
@@ -433,21 +453,14 @@ html_head = '''
 <head>
     <title>GitHub Contributions</title>
     <style>
-        h1 {
-            font-size: 1.5em;
-            margin: 10px 0;
-        }
+        h1 { font-size: 1.5em; margin: 10px 0; }
         table {
-            border-top: 1px solid black;
-            border-left: 1px solid black;
-            border-collapse: collapse;
-            margin: 1em;
-            float: left;
+            border-top: 1px solid black; border-left: 1px solid black; border-collapse: collapse;
+            margin: 1em; float: left;
         }
         th, td {
             padding: 5px; 
-            border-right: 1px solid black;
-            border-bottom: 1px solid black;
+            border-right: 1px solid black; border-bottom: 1px solid black;
         }
         table.stats { border: none; }
         table.stats th, table.stats td { border: none; padding: 1px; }
@@ -463,73 +476,36 @@ html_head = '''
         td.right { text-align: right; }
         td.center, p.center { text-align: center; }
         td.bold { font-weight: bold; }
-        td.bar { 
-            min-width: 300px;
-        }
-        td.bar div {
-            background-color: navy;
-            height: 100%;
-        }
+        td.bar {  min-width: 300px; }
+        td.bar div { background-color: navy; height: 100%; }
         div { margin: 0; padding: 0 }
         #sidebar {
-            position: absolute;
-            top: 0%; left: 0%;
-            width: 15%; height: 100%;
-            border-right: 1px solid black;
+            position: absolute; top: 0%; left: 0%;
+            width: 15%; height: 100%; border-right: 1px solid black;
         }
         #main {
-            position: absolute;
-            top: 0%; left: 15%;
-            width: 82%; height: 100%;
-            padding-left: 3%;
+            position: absolute; top: 0%; left: 15%;
+            width: 82%; height: 100%; padding-left: 3%;
         }
         div.tab {
-            position: relative;
-            border: 1px solid black;
-            width: 80%;
-            padding: 5px;
-            margin: 1em auto;
-            margin-top: 3em;
-            text-align: center;
+            position: relative; border: 1px solid black; text-align: center;
+            width: 80%; padding: 5px; margin: 1em auto; margin-top: 3em;
         }
-        div.tab:hover {
-            cursor: pointer;
-        }
-        div.tab.active {
-            background-color: chartreuse;
-            font-weight: bold;
-        }
-        .hidden {
-            display: none !important;
-        }
+        div.tab:hover, button:hover { cursor: pointer; }
+        div.tab.active, button.active { background-color: chartreuse; font-weight: bold; }
+        .hidden { display: none !important; }
         div.grid-cell {
-            border: 1px solid black;
-            text-align: center;
-            float: left; 
-            width: 300px;
-            max-width: 30%;
-            margin: 5px;
+            border: 1px solid black; text-align: center; float: left; 
+            width: 300px; max-width: 30%; margin: 5px;
         }
-        div.grid-cell label {
-            font-weight: bold;
-        }
-        div.grid-cell table {
-            table-layout: fixed;
-            width: 90%;
-            margin-top: 5px;
-        }
-        div.grid-cell table th {
-            width: 30%;
-        }
+        div.grid-cell label { font-weight: bold; }
+        div.grid-cell table { table-layout: fixed; width: 90%; margin-top: 5px; }
+        div.grid-cell table th { width: 30%; }
         p.month-count {
-            font-weight: bold;
-            font-size: 1.5em;
-            margin: 5px auto;
-            background: chartreuse;
-            width: 50px;
-            border-radius: 25px;
-            padding: 5px;
+            font-weight: bold; font-size: 1.5em; background: chartreuse;
+            width: 50px; margin: 5px auto; padding: 5px; border-radius: 25px;
         }
+        #subtab-selector button { width: 100px; margin-right: 1em; margin-bottom: 10px; }
     </style>
 </head>
 ''' 
@@ -542,18 +518,35 @@ html_body = '''
     {Body}
 </div>
 <script>
-    var current = '{Selected}';
+    var currTab = '{Selected}';
+    var currSubTab = 'stats';
 '''
 
 html_tail = '''
     function changeTab(newTab) {
-        document.getElementById('tab-'+current).classList.remove('active');
+        document.getElementById('tab-'+currTab).classList.remove('active');
         document.getElementById('tab-'+newTab).classList.add('active');
 
-        document.getElementById('tbl-'+current).classList.add('hidden');
+        document.getElementById('tbl-'+currTab).classList.add('hidden');
         document.getElementById('tbl-'+newTab).classList.remove('hidden');
 
-        current = newTab;
+        currTab = newTab;
+    }
+    function changeSubTab(newSubTab) {
+        document.getElementById('btn-'+currSubTab).classList.remove('active');
+        document.getElementById('btn-'+newSubTab).classList.add('active');
+
+        let elements = document.getElementsByClassName('subtab-'+currSubTab);
+        [...elements].forEach(element => {
+            element.classList.add('hidden');
+        });
+
+        elements = document.getElementsByClassName('subtab-'+newSubTab);
+        [...elements].forEach(element => {
+            element.classList.remove('hidden');
+        });
+
+        currSubTab = newSubTab;
     }
 </script>
 </body>
@@ -586,10 +579,9 @@ if __name__ == '__main__':
 '''
 TODO:
 [ ] Summary Tab  
-    - Summary subtabs
+    - Line graph of Daily contributions for month
     - Line graph of Weekly contributions for month
     - Display Github month calendar per user 
-    - Line graph of Daily contributions for month
 [ ] Year Scope
     - Add monthly reports (similar to monthly summary)
     - Add monthly contribs calendar
