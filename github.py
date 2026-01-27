@@ -1,8 +1,9 @@
 # Github Contributions 
 # John Roy Daradal 
 
-import calendar, os, sys
+import calendar, os, sys, io, base64
 import json, requests, webbrowser
+import matplotlib.pyplot as plt
 from collections import defaultdict
 from pathlib import Path, PurePath
 from datetime import date, datetime
@@ -23,6 +24,7 @@ class Config:
         self.cached: bool = False 
         self.weekends: bool = False
         self.is_current_month: bool = True
+        self.has_week0: bool = True
         self.today: int = 0
         self.month_days: int = 0
 
@@ -48,6 +50,7 @@ def main():
     cfg.today = date.today().day 
     cfg.month_days = calendar.monthrange(cfg.date.year, cfg.date.month)[1]
     cfg.is_current_month = is_current_month(cfg.date)
+    cfg.has_week0 = sum(weeks[0]) > 0
 
     # Setup paths 
     json_path = outDir.joinpath(f'{filename}.json')
@@ -269,10 +272,13 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
     summary.append('<div id="tbl-all" class="hidden" style="max-width:950px;">')
 
     summary.append('<div id="subtab-selector" style="clear:both;">')
-    summary.append('<button id="btn-stats" class="active" onclick="changeSubTab(\'stats\')">Stats</button>')
-    summary.append('<button id="btn-graph" onclick="changeSubTab(\'graph\')">Graph</button>')
+    summary.append('<button id="btn-stats" onclick="changeSubTab(\'stats\')">Stats</button>')
+    summary.append('<button id="btn-graph" class="active" onclick="changeSubTab(\'graph\')">Graph</button>')
     summary.append('<button id="btn-calendar" onclick="changeSubTab(\'calendar\')">Calendar</button>')
     summary.append('</div>')
+
+    week_numbers = list(range(0, len(weeks)))
+    if not cfg.has_week0: week_numbers = week_numbers[1:]
 
     totals, ranks = compute_weekly_totals_ranks(contribs, weeks, cfg.weekends)
     entries = [(k, sum(v)) for k,v in totals.items()]
@@ -281,14 +287,13 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
         summary.append(f'<label>{username}</label>')
 
         # Stats Subtab 
-        summary.append('<div class="subtab-stats">')
+        summary.append('<div class="hidden subtab-stats">')
         if cfg.is_current_month:
             avg, pace = get_current_stats(contribs[username], cfg)
             summary.append(create_current_stats(total_count, avg, pace))
         else:
             avg, count = get_past_stats(contribs[username], cfg)
             summary.append(create_past_stats(total_count, avg, count))
-
         summary.append(f'<table><tbody><tr><th>Count</th>')
         for count in totals[username]: summary.append(f'<td class="center">{count}</td>')
         summary.append('</tr><tr><th>Rank</th>')
@@ -297,8 +302,8 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
         summary.append('</div>')
 
         # Graph Subtab
-        summary.append('<div class="hidden subtab-graph">')
-        summary.append(f'<p>Graph for {username}</p>')
+        summary.append('<div class="subtab-graph">')
+        summary.append(create_weekly_bar_graph(week_numbers, totals[username]))
         summary.append('</div>')
 
         # Calendar Subtab 
@@ -309,6 +314,22 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
         summary.append('</div>')
     summary.append('</div>')
     return '\n'.join(summary)
+
+def create_weekly_bar_graph(weeks: list[int], totals: list[int]) -> str:
+    plt.subplots(figsize=(3, 2))
+    plt.xticks(weeks)
+    plt.xlabel('Week')
+    plt.bar(weeks, totals)
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    plt.close()
+
+    buf.seek(0) # Rewind buffer back to start 
+    img_bytes = base64.b64encode(buf.getvalue())
+    buf.close()
+    img_data = img_bytes.decode('utf-8')
+    img = f'<img src="data:image/png;base64,{img_data}" />'
+    return img
 
 def compute_weekly_totals_ranks(contribs: dict[str, Contribs], weeks: list[list[int]], weekends: bool) -> tuple[dict[str, list[int]], dict[str, list[str]]]:
     '''Compute the weekly totals and rankings of each user'''
@@ -506,6 +527,7 @@ html_head = '''
             width: 50px; margin: 5px auto; padding: 5px; border-radius: 25px;
         }
         #subtab-selector button { width: 100px; margin-right: 1em; margin-bottom: 10px; }
+        div.subtab-graph img { width: 50%; float: left; }
     </style>
 </head>
 ''' 
@@ -519,7 +541,7 @@ html_body = '''
 </div>
 <script>
     var currTab = '{Selected}';
-    var currSubTab = 'stats';
+    var currSubTab = 'graph';
 '''
 
 html_tail = '''
@@ -580,7 +602,6 @@ if __name__ == '__main__':
 TODO:
 [ ] Summary Tab  
     - Line graph of Daily contributions for month
-    - Line graph of Weekly contributions for month
     - Display Github month calendar per user 
 [ ] Year Scope
     - Add monthly reports (similar to monthly summary)

@@ -22,4 +22,4 @@ This will look at the users' GitHub pages, and generate a report of their contri
 ## Dependencies
 * [`requests`](https://pypi.org/project/requests/) - for making HTTP requests
 * [`BeautifulSoup4`](https://pypi.org/project/beautifulsoup4/) - for traversing HTML DOM
-* [`matplotlib`](https://pypi.org/project/matplotlib/) - for bar graph
+* [`matplotlib`](https://pypi.org/project/matplotlib/) - for graphs
