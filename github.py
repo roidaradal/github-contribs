@@ -320,7 +320,7 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
 
 def create_calendar(contribs: Contribs, weeks: list[list[int]], prefix: str) -> str:
     '''Create monthly calendar'''
-    html: list[str] = ['<table class="calendar"><tbody>']
+    html: list[str] = ['<div><table class="calendar"><tbody>']
     html.append('<tr>')
     days = 'Mon Tue Wed Thu Fri Sat Sun'.split()
     for i, day in enumerate('MTWTFSS'): 
@@ -339,7 +339,35 @@ def create_calendar(contribs: Contribs, weeks: list[list[int]], prefix: str) -> 
                 html.append(f'<td title="{count} contributions on {date}" class="level{level}">&nbsp;</td>')
         html.append('</tr>')
 
-    html.append('</tbody></table>')
+    html.append('</tbody></table></div>')
+
+    last_day = max(weeks[-1]) # last day of last week
+    counts = [contribs[str(d)][0] for d in range(1, last_day+1)]
+    max_count = max(counts)
+    active_days = len([x for x in counts if x > 0])
+    max_streak, streak_count = 0, 0
+    streak = []
+    for count in counts:
+        if count == 0: 
+            # streak broken
+            if len(streak) > 1:
+                max_streak = max(max_streak, len(streak))
+                streak_count += 1
+            streak = []
+        else:
+            streak.append(count)
+    if len(streak) > 1:
+        max_streak = max(max_streak, len(streak))
+        streak_count += 1
+
+    # Stats
+    template = '<p><b>%d</b><br/><span class="small">%s</span></p>'
+    html.append('<div class="calendar-stats">')
+    html.append(template % (max_streak, 'Max Streak'))
+    html.append(template % (streak_count, 'Streaks'))
+    html.append(template % (max_count, 'Max Count'))
+    html.append(template % (active_days, 'Active Days'))
+    html.append('</div>')
     return '\n'.join(html)
 
 def create_weekly_bar_graph(weeks: list[int], totals: list[int]) -> str:
@@ -536,7 +564,7 @@ html_head = '''
         table.stats { border: none; }
         table.stats th, table.stats td { border: none; padding: 1px; }
         table.stats th.floor { vertical-align: bottom; font-size: 1.15em; }
-        td.small { font-size: 0.8em; }
+        td.small, span.small { font-size: 0.8em; }
         th.today  { background-color: yellow; }
         td.level0 { background-color: #151b23; color: #151b23; }
         td.level1 { background-color: #033a16; color: white;   }
@@ -584,6 +612,14 @@ html_head = '''
             grid-template-columns: repeat(3, 1fr);
             gap: 10px;
         }
+        div.subtab-calendar { display: flex; }
+        div.subtab-calendar div { flex: 1; }
+        div.calendar-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+        }
+        div.calendar-stats p { margin: 0; margin-top: 10px; padding: 0; }
+        div.calendar-stats p b { font-size: 1.25em; }
     </style>
 </head>
 ''' 
@@ -656,6 +692,8 @@ if __name__ == '__main__':
 
 '''
 TODO:
+[ ] Calendar: underline streaks, white border max
+[ ] Improve line graphs - cut streaks 
 [ ] Year Scope
     - Add monthly reports (similar to monthly summary)
     - Add monthly contribs calendar
