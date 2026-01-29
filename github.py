@@ -389,7 +389,7 @@ def create_daily_line_graph(contribs: Contribs, cfg: Config) -> str:
     if sum(totals) == 0: ax.set_ylim(bottom=0, top=5)
     ax.set_xlim(left=0, right=cfg.month_days+1)
     plt.xlabel('Day')
-    plt.plot(days, totals, color='green')
+    plt.bar(days, totals, color='green', width=1.0) #plt.plot for line graph
 
     return create_image()
 
@@ -692,8 +692,6 @@ if __name__ == '__main__':
 
 '''
 TODO:
-[ ] Calendar: underline streaks, white border max
-[ ] Improve line graphs - cut streaks 
 [ ] Year Scope
     - Add monthly reports (similar to monthly summary)
     - Add monthly contribs calendar
