@@ -275,7 +275,11 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
     summary.append('<button id="btn-stats"    onclick="changeSubTab(\'stats\')" class="active">Stats</button>')
     summary.append('<button id="btn-graph"    onclick="changeSubTab(\'graph\')">Graph</button>')
     summary.append('<button id="btn-calendar" onclick="changeSubTab(\'calendar\')">Calendar</button>')
-    summary.append('</div>')
+    summary.append('<div id="graph-selector" style="display:inline;" class="hidden">')
+    summary.append('<label style="margin-right: 1em;"> | </label>')
+    summary.append('<button id="btn-line"   onclick="changeGraph(\'line\')" class="active">Line</button>')
+    summary.append('<button id="btn-bar"    onclick="changeGraph(\'bar\')">Bar</button>')
+    summary.append('</div></div>')
     
     week_numbers = list(range(0, len(weeks)))
     if not cfg.has_week0: week_numbers = week_numbers[1:]
@@ -307,6 +311,7 @@ def create_summary(contribs: dict[str, Contribs], weeks: list[list[int]], cfg: C
         summary.append('<div class="hidden subtab-graph">')
         summary.append(create_weekly_bar_graph(week_numbers, totals[username]))
         summary.append(create_daily_line_graph(contribs[username], cfg))
+        summary.append(create_daily_bar_graph(contribs[username], cfg))
         summary.append('</div>')
 
         # Calendar Subtab 
@@ -378,7 +383,7 @@ def create_weekly_bar_graph(weeks: list[int], totals: list[int]) -> str:
     plt.xlabel('Week')
     plt.bar(weeks, totals, color='green')
     
-    return create_image()
+    return create_image('week-bar')
 
 def create_daily_line_graph(contribs: Contribs, cfg: Config) -> str:
     '''Create daily contribs line graph'''
@@ -389,11 +394,23 @@ def create_daily_line_graph(contribs: Contribs, cfg: Config) -> str:
     if sum(totals) == 0: ax.set_ylim(bottom=0, top=5)
     ax.set_xlim(left=0, right=cfg.month_days+1)
     plt.xlabel('Day')
-    plt.bar(days, totals, color='green', width=1.0) #plt.plot for line graph
+    plt.plot(days, totals, color='green')
+    return create_image('day-line')
 
-    return create_image()
+def create_daily_bar_graph(contribs: Contribs, cfg: Config) -> str:
+    '''Create daily contribs skyline bar graph'''
+    days = list(range(1, cfg.month_days+1))
+    totals = [contribs[str(d)][0] for d in days]
 
-def create_image() -> str:
+    _, ax = plt.subplots(figsize=(3,2))
+    if sum(totals) == 0: ax.set_ylim(bottom=0, top=5)
+    ax.set_xlim(left=0, right=cfg.month_days+1)
+    plt.xlabel('Day')
+    plt.bar(days, totals, color='green', width=1.0)
+    return create_image('day-bar', active=False)
+
+
+def create_image(name: str, active: bool=True) -> str:
     '''Create image tag from base64 encoded plot of matplotlib'''
     buf = io.BytesIO()
     plt.savefig(buf, format='png', bbox_inches='tight')
@@ -404,7 +421,8 @@ def create_image() -> str:
     buf.close()
     img_data = img_bytes.decode('utf-8')
 
-    return f'<img src="data:image/png;base64,{img_data}" />'
+    hidden, blank = 'hidden', ''
+    return f'<img class="{name} {blank if active else hidden}" src="data:image/png;base64,{img_data}" />'
 
 def compute_weekly_totals_ranks(contribs: dict[str, Contribs], weeks: list[list[int]], weekends: bool) -> tuple[dict[str, list[int]], dict[str, list[str]]]:
     '''Compute the weekly totals and rankings of each user'''
@@ -634,34 +652,53 @@ html_body = '''
 <script>
     var currTab = '{Selected}';
     var currSubTab = 'stats';
+    var currGraph = 'line';
 '''
 
 html_tail = '''
     function changeTab(newTab) {
-        document.getElementById('tab-'+currTab).classList.remove('active');
-        document.getElementById('tab-'+newTab).classList.add('active');
+        deactivate(document.getElementById('tab-'+currTab));
+        activate(document.getElementById('tab-'+newTab));
 
-        document.getElementById('tbl-'+currTab).classList.add('hidden');
-        document.getElementById('tbl-'+newTab).classList.remove('hidden');
+        hideElement(document.getElementById('tbl-'+currTab));
+        showElement(document.getElementById('tbl-'+newTab));
 
         currTab = newTab;
     }
     function changeSubTab(newSubTab) {
-        document.getElementById('btn-'+currSubTab).classList.remove('active');
-        document.getElementById('btn-'+newSubTab).classList.add('active');
+        deactivate(document.getElementById('btn-'+currSubTab));
+        activate(document.getElementById('btn-'+newSubTab));
+
+        if(newSubTab == 'graph') {
+            showElement(document.getElementById('graph-selector'));
+        } else if (currSubTab == 'graph') {
+            hideElement(document.getElementById('graph-selector'));
+        }
 
         let elements = document.getElementsByClassName('subtab-'+currSubTab);
-        [...elements].forEach(element => {
-            element.classList.add('hidden');
-        });
+        [...elements].forEach(hideElement);
 
         elements = document.getElementsByClassName('subtab-'+newSubTab);
-        [...elements].forEach(element => {
-            element.classList.remove('hidden');
-        });
+        [...elements].forEach(showElement);
 
         currSubTab = newSubTab;
     }
+    function changeGraph(newGraph) {
+        deactivate(document.getElementById('btn-'+currGraph));
+        activate(document.getElementById('btn-'+newGraph));
+
+        let elements = document.getElementsByClassName('day-'+currGraph);
+        [...elements].forEach(hideElement);
+
+        elements = document.getElementsByClassName('day-'+newGraph);
+        [...elements].forEach(showElement);
+
+        currGraph = newGraph;
+    }
+    function activate(element)    { element.classList.add('active'); }
+    function deactivate(element)  { element.classList.remove('active'); }
+    function hideElement(element) { element.classList.add('hidden'); }
+    function showElement(element) { element.classList.remove('hidden'); }
 </script>
 </body>
 </html>
