@@ -222,8 +222,9 @@ def create_sidebar(weeks: list[list[int]], selected: int, cfg: Config) -> str:
     sidebar: list[str] = [
         '<div class="tab" id="tab-all" onclick="changeTab(\'all\')">Summary</div>'
     ]
+    limit = 7 if cfg.weekends else 5
     for week, days in enumerate(weeks):
-        if week == 0 and sum(days) == 0: continue # skip if no week0
+        if week == 0 and sum(days[:limit]) == 0: continue # skip if no week0
 
         active = "active" if selected == week else ""
         sidebar.append(f'<div class="tab {active}" id="tab-{week}" onclick="changeTab(\'{week}\')">Week {week}</div>')
@@ -245,7 +246,7 @@ def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected:
     for week, days in enumerate(weeks):
         if week == 0 and sum(days) == 0: continue # skip if no week0
         week_days = [d for d in days[:limit] if d > 0]
-        # if len(week_days) == 0: continue # skip if empty week
+        if len(week_days) == 0: continue # skip if empty week
         week_start = min(week_days)
         week_end = max(days[:limit])
         title = '%.2d - %.2d %s' % (week_start, week_end, month)
