@@ -2,7 +2,8 @@
 # John Roy Daradal 
 
 import calendar, os, sys, io, base64
-import json, requests, webbrowser
+import asyncio, aiohttp
+import json, webbrowser
 import matplotlib.pyplot as plt
 from collections import defaultdict
 from pathlib import Path, PurePath
@@ -33,7 +34,7 @@ green   = lambda text: '\033[32m%s%s' % (text, color_reset)
 yellow  = lambda text: '\033[33m%s%s' % (text, color_reset)
 cyan    = lambda text: '\033[36m%s%s' % (text, color_reset)
 
-def main():
+async def main():
     '''Main function'''
 
     # Output dir = ~/.contribs
@@ -70,10 +71,13 @@ def main():
 
         # Fetch contributions
         print('Fetching %s GitHub contributions from %s...' % (green(month), yellow(f'`{cfg.path}`')))
-        for username in usernames:
-            contribs[username] = fetch_user_month_contributions(username, cfg)
-            total = sum(count for (count,_) in contribs[username].values())
-            print(template % (cyan(username), total))
+        async with aiohttp.ClientSession() as session:
+            tasks = [fetch_user_month_contributions(session, username, cfg) for username in usernames]
+            results = await asyncio.gather(*tasks)
+            for username, user_contribs in results:
+                contribs[username] = user_contribs 
+                total = sum(count for (count,_) in user_contribs.values())
+                print(template % (cyan(username), total))
 
         # Save contribs to JSON file (cache)
         with open(json_path, 'w') as f:
@@ -176,7 +180,7 @@ def new_date(date_string: str) -> date:
     except:
         return date.today()
     
-def fetch_user_month_contributions(username: str, cfg: Config) -> Contribs:
+async def fetch_user_month_contributions(session: aiohttp.ClientSession, username: str, cfg: Config) -> tuple[str, Contribs]:
     '''Return dict{day => (count, level)} contributions of username for given month'''
     d = cfg.date
     # Start GitHub page from January 1 of given year 
@@ -189,8 +193,9 @@ def fetch_user_month_contributions(username: str, cfg: Config) -> Contribs:
     month_end   = str(date(d.year, d.month, last_month_day))
 
     # Fetch HTML page and use BeautifulSoup 
-    resp = requests.get(url)
-    soup = BeautifulSoup(resp.text, 'lxml')
+    async with session.get(url) as response:
+        resp = await response.text()
+    soup = BeautifulSoup(resp, 'lxml')
 
     # Get contributions data
     contribs: Contribs = {}
@@ -210,7 +215,7 @@ def fetch_user_month_contributions(username: str, cfg: Config) -> Contribs:
         count = 0 if count_text == 'No' else int(count_text)
         level = int(str(cell['data-level']))
         contribs[str(day)] = (count, level)
-    return contribs
+    return username, contribs
 
 def create_sidebar(weeks: list[list[int]], selected: int, cfg: Config) -> str:
     '''Create sidebar content'''
@@ -239,7 +244,9 @@ def create_body(contribs: dict[str, Contribs], weeks: list[list[int]], selected:
     limit = 7 if cfg.weekends else 5
     for week, days in enumerate(weeks):
         if week == 0 and sum(days) == 0: continue # skip if no week0
-        week_start = min([d for d in days[:limit] if d > 0])
+        week_days = [d for d in days[:limit] if d > 0]
+        # if len(week_days) == 0: continue # skip if empty week
+        week_start = min(week_days)
         week_end = max(days[:limit])
         title = '%.2d - %.2d %s' % (week_start, week_end, month)
         name = str(week)
@@ -408,7 +415,6 @@ def create_daily_bar_graph(contribs: Contribs, cfg: Config) -> str:
     plt.xlabel('Day')
     plt.bar(days, totals, color='green', width=1.0)
     return create_image('day-bar', active=False)
-
 
 def create_image(name: str, active: bool=True) -> str:
     '''Create image tag from base64 encoded plot of matplotlib'''
@@ -725,7 +731,7 @@ table_template = '''
 '''
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
 
 '''
 TODO:
